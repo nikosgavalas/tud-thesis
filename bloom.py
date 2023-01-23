@@ -1,6 +1,8 @@
 # I wrote this because pybloomfiltermmap3 does not work with python 3.11 yet
 # https://en.wikipedia.org/wiki/Bloom_filter#Probability_of_false_positives.
 
+import json
+from base64 import b64encode, b64decode
 from math import log, ceil, floor
 
 from mmh3 import hash
@@ -26,3 +28,16 @@ class BloomFilter:
             if not self.bitarray[hash(item, i) % self.bitarray_size]:
                 return False
         return True
+
+    def serialize(self):
+        return json.dumps({
+            'bytes': b64encode(self.bitarray.tobytes()).decode(),
+            'len': len(self.bitarray),
+            'endian': self.bitarray.endian()
+        })
+
+    def deserialize(self, data):
+        data = json.loads(data)
+        arr = bitarray(endian=data['endian'])
+        arr.frombytes(b64decode(data['bytes']))
+        self.bitarray = arr[:data['len']]
