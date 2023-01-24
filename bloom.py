@@ -11,7 +11,7 @@ from bitarray import bitarray
 
 class BloomFilter:
 
-    def __init__(self, num_items, false_positive_prob=0.01):
+    def __init__(self, num_items=1000, false_positive_prob=0.01):
         # https://stackoverflow.com/questions/658439/how-many-hash-functions-does-my-bloom-filter-need
         self.bitarray_size = ceil(-(num_items * log(false_positive_prob)) / (log(2) ** 2))
         self.num_hash_funcs = floor((self.bitarray_size / num_items) * log(2))  # floor to keep the hash funcs as few as possible for performance
@@ -33,11 +33,14 @@ class BloomFilter:
         return json.dumps({
             'bytes': b64encode(self.bitarray.tobytes()).decode(),
             'len': len(self.bitarray),
-            'endian': self.bitarray.endian()
+            'endian': self.bitarray.endian(),
+            'num_hash_funcs': self.num_hash_funcs
         })
 
-    def deserialize(self, data):
+    def deserialize(self, data):  # TODO make this a function (that returns a bloomfilter with needing to call it on an already existing one)
         data = json.loads(data)
         arr = bitarray(endian=data['endian'])
         arr.frombytes(b64decode(data['bytes']))
-        self.bitarray = arr[:data['len']]
+        self.bitarray_size = data['len']
+        self.bitarray = arr[:self.bitarray_size]
+        self.num_hash_funcs = data['num_hash_funcs']
