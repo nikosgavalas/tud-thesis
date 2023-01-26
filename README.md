@@ -1,9 +1,11 @@
 Roadmap:
-- [ ] memtable
-- [ ] bloom filters
-- [ ] flush the memtable
-- [ ] file format
-  - [ ] data
-  - [ ] fence pointers persistence
-  - [ ] bloom filters persistence
+- [x] memtable
+- [x] bloom filters
+- [x] flush the memtable
+- [x] file format
+  - [x] data
+  - [x] fence pointers persistence
+  - [x] bloom filters persistence
+- [ ] merging multiple levels
+- [ ] asyncio
 - [ ] WAL
