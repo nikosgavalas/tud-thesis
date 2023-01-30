@@ -9,8 +9,8 @@ from pathlib import Path
 
 from sortedcontainers import SortedDict
 
-from bloom import BloomFilter
-from fence import FencePointers
+from src.bloom import BloomFilter
+from src.fence import FencePointers
 
 
 # do not change these
@@ -25,19 +25,18 @@ FENCE_POINTERS_SKIPS = 3  # NOTE this can be used to organize data into compress
 
 
 class Run:
-    
     def __init__(self, pointers, filter):
         self.filter = filter
         self.pointers = pointers
 
 
 class LSMTree:
-
-    def __init__(self):
-        # TODO directory checks
+    def __init__(self, data_dir='./data', memtable_bytes_limit=1000000):
         # TODO load data from WAL
+        self.data_dir = data_dir
+
         self.memtable = SortedDict()
-        self.memtable_bytes_limit = 10
+        self.memtable_bytes_limit = memtable_bytes_limit
         self.memtable_bytes_count = 0
 
         self.runs = []

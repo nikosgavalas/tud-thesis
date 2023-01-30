@@ -10,7 +10,6 @@ from bitarray import bitarray
 
 
 class BloomFilter:
-
     def __init__(self, num_items=1000, false_positive_prob=0.01):
         # https://stackoverflow.com/questions/658439/how-many-hash-functions-does-my-bloom-filter-need
         self.bitarray_size = ceil(-(num_items * log(false_positive_prob)) / (log(2) ** 2))
@@ -22,7 +21,7 @@ class BloomFilter:
     def add(self, item):
         for i in range(self.num_hash_funcs):
             self.bitarray[hash(item, i) % self.bitarray_size] = True
-
+    
     def __contains__(self, item):
         for i in range(self.num_hash_funcs):
             if not self.bitarray[hash(item, i) % self.bitarray_size]:

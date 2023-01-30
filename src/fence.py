@@ -1,6 +1,6 @@
 '''
 This now is implemented as a sorted dictionary (because I need the bisect_left/right) with base64/json-based ser/der.
-A better implementation would be: two arrays (one for keys one for values) so that I can binary-search on the keys, and binary encoding.
+A better implementation would be: two arrays (one for keys one for values) so that I can binary-search on the keys, and binary encoding for ser/der.
 '''
 
 import json
@@ -10,7 +10,6 @@ from sortedcontainers import SortedDict
 
 
 class FencePointers:
-    
     def __init__(self):
         self.pointers = SortedDict()
 
@@ -29,7 +28,7 @@ class FencePointers:
             data[b64encode(k).decode()] = v
         return json.dumps(data)
 
-    def deserialize(self, data):
+    def deserialize(self, data): # TODO like in the bloom filter, make this a function that returns a ready object
         data = json.loads(data)
         self.pointers = SortedDict()
         for k, v in data.items():
