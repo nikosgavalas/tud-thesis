@@ -18,18 +18,18 @@ def signal_handler(sig, frame):
     write_exit_msg()
 
 
-def parse(fd):
-    db = LSMTree()
+def parse(fd, args):
+    db = LSMTree(args.d, args.r, args.s, args.m)
     csv_reader = csv.reader(fd, delimiter=' ', quotechar='"')
     for row in csv_reader:
         if not row:
             continue
         op = row[0]
-        if op == 'w':
+        if op == 's' or op == 'w':
             key = row[1]
             value = row[2]
             db.set(key.encode(), value.encode())
-        elif op == 'r':
+        elif op == 'g' or op == 'r':
             key = row[1]
             sys.stdout.write(db.get(key.encode()).decode())
             sys.stdout.write('\n')
@@ -42,16 +42,20 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
 
     parser = ArgumentParser()
-    parser.add_argument('-f', type=str, help='path of the input file')
+    parser.add_argument('-f', type=str, help='path to input file')
+    parser.add_argument('-d', type=str, help='path to data directory', default='./data')
+    parser.add_argument('-r', type=int, help='max runs per level', default=3)
+    parser.add_argument('-s', type=int, help='density (fence pointer skips)', default=20)
+    parser.add_argument('-m', type=int, help='memtable bytes limit', default=1000000)
     args = parser.parse_args()
 
     write_exit_msg()
 
     if args.f:
         with open(args.f, 'r') as fd:
-            parse(fd)
+            parse(fd, args)
     else:
-        parse(sys.stdin)
+        parse(sys.stdin, args)
 
 
 if __name__ == '__main__':
