@@ -19,7 +19,7 @@ class TestLSMTree(unittest.TestCase):
         shutil.rmtree(self.dir.name)
     
     def test_e2e_1(self):
-        l = LSMTree(self.dir.name, max_runs_per_level=3, fence_pointer_skips=3, memtable_bytes_limit=10)
+        l = LSMTree(self.dir.name, max_runs_per_level=3, density_factor=3, memtable_bytes_limit=10)
 
         l.set(b'b', b'2')
         l.set(b'asdf', b'12345')
@@ -31,7 +31,7 @@ class TestLSMTree(unittest.TestCase):
         self.assertEqual(l.get(b'cc'), b'cici345')
 
     def test_merge(self):
-        l = LSMTree(self.dir.name, max_runs_per_level=3, fence_pointer_skips=3, memtable_bytes_limit=10)
+        l = LSMTree(self.dir.name, max_runs_per_level=3, density_factor=3, memtable_bytes_limit=10)
 
         l.set(b'a1', b'a1')
         l.set(b'a1', b'a11')

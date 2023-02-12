@@ -20,20 +20,20 @@ MAX_VALUE_LENGTH = 256
 
 
 class Run:
-    def __init__(self, pointers, filter):
+    def __init__(self, filter, pointers):
         self.filter = filter
         self.pointers = pointers
 
 
 class LSMTree:
     # NOTE the fence pointers can be used to organize data into compressable blocks
-    def __init__(self, data_dir='./data', max_runs_per_level=3, fence_pointer_skips=20, memtable_bytes_limit=1000000):
+    def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1000000):
         # TODO load data from WAL
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
 
         self.max_runs_per_level = max_runs_per_level
-        self.fence_pointer_skips = fence_pointer_skips
+        self.density_factor = density_factor
 
         self.memtable = SortedDict()
         self.memtable_bytes_limit = memtable_bytes_limit
@@ -58,7 +58,7 @@ class LSMTree:
                 data = filter_file.read()
             filter = BloomFilter(from_str=data)
 
-            self.runs.append(Run(pointers, filter))
+            self.runs.append(Run(filter, pointers))
 
     def load_metadata(self):
         if self.metadata_path.is_file():
@@ -79,7 +79,7 @@ class LSMTree:
                 _, offset = run.pointers.peekitem(idx)
                 with (self.data_dir / f'L0.{i}.run').open('rb') as run_file:
                     run_file.seek(offset)
-                    for i in range(self.fence_pointer_skips):
+                    for i in range(run.pointers.density_factor):
                         read_key, read_value = self._read_kv_pair(run_file)
                         if read_key == key:
                             return read_value
@@ -174,24 +174,18 @@ class LSMTree:
 
     def flush_memtable(self):
         with (self.data_dir / f'L0.{self.metadata["num_runs"]}.run').open('wb') as run_file:
-            kv_count = 0
-            fence_pointers = FencePointers()
+            fence_pointers = FencePointers(self.density_factor)
             filter = BloomFilter(len(self.memtable))
 
             while self.memtable:
                 k, v = self.memtable.popitem(0)
-
-                if kv_count % self.fence_pointer_skips == 0:
-                    fence_pointers.add(k, run_file.tell())
-                kv_count += 1
-
+                fence_pointers.add(k, run_file.tell())
                 self._write_kv_pair(run_file, k, v)
-
                 filter.add(k)
  
             self.memtable_bytes_count = 0
 
-            self.runs.append(Run(fence_pointers, filter))
+            self.runs.append(Run(filter, fence_pointers))
 
         with (self.data_dir / f'L0.{self.metadata["num_runs"]}.pointers').open('w') as pointers_file:
             pointers_file.write(fence_pointers.serialize())

@@ -1,6 +1,7 @@
 '''
 This now is implemented as a sorted dictionary (because I need the bisect_left/right) with base64/json-based ser/der.
 A better implementation would be: two arrays (one for keys one for values) so that I can binary-search on the keys, and binary encoding for ser/der.
+TODO rebuilding from string could be done linearly if the serialization is sorted, right now the sorteddict is being rebuilt from scratch so that should be fixed
 '''
 
 import json
@@ -10,16 +11,24 @@ from sortedcontainers import SortedDict
 
 
 class FencePointers:
-    def __init__(self, from_str: str | None = None):
+    def __init__(self, density_factor=20, from_str: str | None = None):
         self.pointers = SortedDict()
+
+        self.density_factor = density_factor
+        self.counter = 0
 
         if type(from_str) is str:
             data = json.loads(from_str) 
-            for k, v in data.items():
+            for k, v in data['pointers'].items():
                 self.pointers[b64decode(k)] = v
+            self.density_factor = data['density_factor']
+            self.counter = data['counter']
 
     def add(self, key: bytes, offset: int):
-        self.pointers[key] = offset
+        if self.counter % self.density_factor == 0:
+            self.pointers[key] = offset
+
+        self.counter += 1
     
     def bisect(self, key: bytes):
         return self.pointers.bisect(key)
@@ -28,10 +37,17 @@ class FencePointers:
         return self.pointers.peekitem(idx)
 
     def serialize(self):
-        data = {}
+        pointers = {}
         for k, v in self.pointers.items():
-            data[b64encode(k).decode()] = v
-        return json.dumps(data)
+            pointers[b64encode(k).decode()] = v
+        return json.dumps({
+            'pointers': pointers,
+            'density_factor': self.density_factor,
+            'counter': self.counter
+        })
+
+    def __len__(self):
+        return self.counter
 
     def __str__(self) -> str:
         return self.serialize()
