@@ -28,7 +28,6 @@ class Run:
 class LSMTree:
     # NOTE the fence pointers can be used to organize data into compressable blocks
     def __init__(self, data_dir='./data', max_runs_per_level=3, fence_pointer_skips=20, memtable_bytes_limit=1000000):
-        # TODO replace all refs to hardcoded 'data' dir to self.data_dir
         # TODO load data from WAL
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
@@ -53,13 +52,11 @@ class LSMTree:
         for i in range(self.metadata['num_runs']):
             with (self.data_dir / f'L0.{i}.pointers').open('r') as pointers_file:
                 data = pointers_file.read()
-            pointers = FencePointers()
-            pointers.deserialize(data)
+            pointers = FencePointers(from_str=data)
 
             with (self.data_dir / f'L0.{i}.filter').open('r') as filter_file:
                 data = filter_file.read()
-            filter = BloomFilter()
-            filter.deserialize(data)
+            filter = BloomFilter(from_str=data)
 
             self.runs.append(Run(pointers, filter))
 

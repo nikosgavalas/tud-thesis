@@ -10,13 +10,30 @@ from bitarray import bitarray
 
 
 class BloomFilter:
-    def __init__(self, num_items=1000, false_positive_prob=0.01):
-        # https://stackoverflow.com/questions/658439/how-many-hash-functions-does-my-bloom-filter-need
-        self.bitarray_size = ceil(-(num_items * log(false_positive_prob)) / (log(2) ** 2))
-        self.num_hash_funcs = floor((self.bitarray_size / num_items) * log(2))  # floor to keep the hash funcs as few as possible for performance
+    def __init__(self, est_num_items=1000, false_positive_prob=0.01, from_str: str | None = None):
+        if type(from_str) is str:
+            data = json.loads(from_str)
 
-        self.bitarray = bitarray(self.bitarray_size)
-        self.bitarray.setall(False)
+            arr = bitarray(endian=data['endian'])
+            arr.frombytes(b64decode(data['bytes']))
+            self.bitarray_size = data['bitarray_size']
+            self.bitarray = arr[:self.bitarray_size]
+
+            self.num_hash_funcs = data['num_hash_funcs']
+
+            self.est_num_items = data['est_num_items']
+            self.false_positive_prob = data['false_positive_prob']
+
+        else:
+            self.est_num_items = est_num_items
+            self.false_positive_prob = false_positive_prob
+
+            # https://stackoverflow.com/questions/658439/how-many-hash-functions-does-my-bloom-filter-need
+            self.bitarray_size = ceil(-(est_num_items * log(false_positive_prob)) / (log(2) ** 2))
+            self.num_hash_funcs = floor((self.bitarray_size / est_num_items) * log(2))  # floor to keep the hash funcs as few as possible for performance
+
+            self.bitarray = bitarray(self.bitarray_size)
+            self.bitarray.setall(False)
 
     def add(self, item):
         for i in range(self.num_hash_funcs):
@@ -31,15 +48,13 @@ class BloomFilter:
     def serialize(self):
         return json.dumps({
             'bytes': b64encode(self.bitarray.tobytes()).decode(),
-            'len': len(self.bitarray),
+            'bitarray_size': len(self.bitarray),
             'endian': self.bitarray.endian(),
-            'num_hash_funcs': self.num_hash_funcs
+            'num_hash_funcs': self.num_hash_funcs,
+            # the last two are not necessary but I put them for completeness
+            'est_num_items': self.est_num_items,
+            'false_positive_prob': self.false_positive_prob
         })
 
-    def deserialize(self, data):  # TODO make this a function (that returns a bloomfilter with needing to call it on an already existing one)
-        data = json.loads(data)
-        arr = bitarray(endian=data['endian'])
-        arr.frombytes(b64decode(data['bytes']))
-        self.bitarray_size = data['len']
-        self.bitarray = arr[:self.bitarray_size]
-        self.num_hash_funcs = data['num_hash_funcs']
+    def __str__(self) -> str:
+        return self.serialize()

@@ -10,8 +10,13 @@ from sortedcontainers import SortedDict
 
 
 class FencePointers:
-    def __init__(self):
+    def __init__(self, from_str: str | None = None):
         self.pointers = SortedDict()
+
+        if type(from_str) is str:
+            data = json.loads(from_str) 
+            for k, v in data.items():
+                self.pointers[b64decode(k)] = v
 
     def add(self, key: bytes, offset: int):
         self.pointers[key] = offset
@@ -28,8 +33,5 @@ class FencePointers:
             data[b64encode(k).decode()] = v
         return json.dumps(data)
 
-    def deserialize(self, data): # TODO like in the bloom filter, make this a function that returns a ready object
-        data = json.loads(data)
-        self.pointers = SortedDict()
-        for k, v in data.items():
-            self.pointers[b64decode(k)] = v
+    def __str__(self) -> str:
+        return self.serialize()

@@ -1,6 +1,5 @@
 import unittest
 from random import Random
-from math import isclose
 
 from src.bloom import BloomFilter
 
@@ -32,8 +31,7 @@ class TestBloomFilter(unittest.TestCase):
         b1 = BloomFilter()
         for i in range(20):
             b1.add(rng.randbytes(10))
-        b2 = BloomFilter()
-        b2.deserialize(b1.serialize())
+        b2 = BloomFilter(from_str=b1.serialize())
         self.assertEqual(b1.bitarray, b2.bitarray)
 
 
