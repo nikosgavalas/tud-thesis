@@ -45,7 +45,7 @@ def main():
     parser.add_argument('-f', type=str, help='path to input file')
     parser.add_argument('-d', type=str, help='path to data directory', default='./data')
     parser.add_argument('-r', type=int, help='max runs per level', default=3)
-    parser.add_argument('-s', type=int, help='density (fence pointer skips)', default=20)
+    parser.add_argument('-p', type=int, help='density factor', default=20)
     parser.add_argument('-m', type=int, help='memtable bytes limit', default=1000000)
     args = parser.parse_args()
 
