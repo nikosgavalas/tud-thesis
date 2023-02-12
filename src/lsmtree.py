@@ -123,6 +123,9 @@ class LSMTree:
             self.memtable_bytes_count = new_bytes_count
     
     def merge(self):
+        fence_pointers = FencePointers(self.density_factor)
+        filter = BloomFilter(sum([run.filter.est_num_items for run in self.runs]))  # I can replace with an actual accurate count but I don't think it's worth it, it's an estimate anyway
+
         # TODO create bloom filter and fence pointers for this!! see self.flush_memtable()
         fds = []
         keys = []
@@ -151,7 +154,9 @@ class LSMTree:
                         argmin_key = i
 
                 if values[argmin_key]:  # assumption: empty value == deleted item, so if empty I am writing nothing
+                    fence_pointers.add(keys[argmin_key], run_file.tell())
                     self._write_kv_pair(run_file, keys[argmin_key], values[argmin_key])
+                    filter.add(keys[argmin_key])
                 
                 written_key = keys[argmin_key]
                 
@@ -169,23 +174,30 @@ class LSMTree:
 
         for fd in fds:
             fd.close()
-            # TODO empty the runs array
-            # TODO remove the files too after successfully merging.
+
+        with (self.data_dir / f'L1.0.pointers').open('w') as pointers_file:
+            pointers_file.write(fence_pointers.serialize())
+
+        with (self.data_dir / f'L1.0.filter').open('w') as filter_file:
+            filter_file.write(filter.serialize())
+
+        # TODO empty the runs array
+        # TODO remove the files too after successfully merging.
 
     def flush_memtable(self):
-        with (self.data_dir / f'L0.{self.metadata["num_runs"]}.run').open('wb') as run_file:
-            fence_pointers = FencePointers(self.density_factor)
-            filter = BloomFilter(len(self.memtable))
+        fence_pointers = FencePointers(self.density_factor)
+        filter = BloomFilter(len(self.memtable))
 
+        with (self.data_dir / f'L0.{self.metadata["num_runs"]}.run').open('wb') as run_file:
             while self.memtable:
                 k, v = self.memtable.popitem(0)
                 fence_pointers.add(k, run_file.tell())
                 self._write_kv_pair(run_file, k, v)
                 filter.add(k)
  
-            self.memtable_bytes_count = 0
+        self.memtable_bytes_count = 0
 
-            self.runs.append(Run(filter, fence_pointers))
+        self.runs.append(Run(filter, fence_pointers))
 
         with (self.data_dir / f'L0.{self.metadata["num_runs"]}.pointers').open('w') as pointers_file:
             pointers_file.write(fence_pointers.serialize())
