@@ -30,8 +30,8 @@ class TestLSMTree(unittest.TestCase):
         self.assertEqual(l.get(b'asdf'), b'12345')
         self.assertEqual(l.get(b'cc'), b'cici345')
 
-    def test_merge(self):
-        l = LSMTree(self.dir.name, max_runs_per_level=3, density_factor=3, memtable_bytes_limit=10)
+    def test_merge_1(self):
+        l = LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
 
         l.set(b'a1', b'a1')
         l.set(b'a1', b'a11')

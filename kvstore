@@ -19,7 +19,7 @@ def signal_handler(sig, frame):
 
 
 def parse(fd, args):
-    db = LSMTree(args.d, args.r, args.s, args.m)
+    db = LSMTree(args.d, args.r, args.p, args.m)
     csv_reader = csv.reader(fd, delimiter=' ', quotechar='"')
     for row in csv_reader:
         if not row:

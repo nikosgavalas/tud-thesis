@@ -32,6 +32,7 @@ class LSMTree:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
 
+        assert(max_runs_per_level >= 1)
         self.max_runs_per_level = max_runs_per_level
         self.density_factor = density_factor
 
@@ -39,26 +40,26 @@ class LSMTree:
         self.memtable_bytes_limit = memtable_bytes_limit
         self.memtable_bytes_count = 0
 
-        self.runs = []
+        self.levels = [[]]
 
         self.metadata = {
-            'num_runs': 0
+            'levels': self.levels
         }
         self.metadata_path = self.data_dir / 'meta'
         self.load_metadata()
 
         # load filters and pointers for levels and runs
-        # TODO loading only first level for now
-        for i in range(self.metadata['num_runs']):
-            with (self.data_dir / f'L0.{i}.pointers').open('r') as pointers_file:
-                data = pointers_file.read()
-            pointers = FencePointers(from_str=data)
+        # TODO FIXME persistence!
+        # for i in range(self.metadata['num_runs']):
+        #     with (self.data_dir / f'L0.{i}.pointers').open('r') as pointers_file:
+        #         data = pointers_file.read()
+        #     pointers = FencePointers(from_str=data)
 
-            with (self.data_dir / f'L0.{i}.filter').open('r') as filter_file:
-                data = filter_file.read()
-            filter = BloomFilter(from_str=data)
+        #     with (self.data_dir / f'L0.{i}.filter').open('r') as filter_file:
+        #         data = filter_file.read()
+        #     filter = BloomFilter(from_str=data)
 
-            self.runs.append(Run(filter, pointers))
+        #     self.runs.append(Run(filter, pointers))
 
     def load_metadata(self):
         if self.metadata_path.is_file():
@@ -71,18 +72,19 @@ class LSMTree:
         if key in self.memtable:
             return self.memtable[key]
 
-        for i, run in reversed(list(enumerate(self.runs))):  # TODO for level in levels, ... for run in runs:... TODO remove enumerate, add the file in the Runs class?
-            if key in run.filter:
-                idx = run.pointers.bisect(key) - 1  # -1 because I want the index of the item on the left
-                if idx < 0:
-                    return EMPTY
-                _, offset = run.pointers.peekitem(idx)
-                with (self.data_dir / f'L0.{i}.run').open('rb') as run_file:
-                    run_file.seek(offset)
-                    for i in range(run.pointers.density_factor):
-                        read_key, read_value = self._read_kv_pair(run_file)
-                        if read_key == key:
-                            return read_value
+        for level_idx, level in enumerate(self.levels):
+            for i, run in reversed(list(enumerate(level))):
+                if key in run.filter:
+                    idx = run.pointers.bisect(key) - 1  # -1 because I want the index of the item on the left
+                    if idx < 0:
+                        return EMPTY
+                    _, offset = run.pointers.peekitem(idx)
+                    with (self.data_dir / f'L{level_idx}.{i}.run').open('rb') as run_file:
+                        run_file.seek(offset)
+                        for i in range(run.pointers.density_factor):
+                            read_key, read_value = self._read_kv_pair(run_file)
+                            if read_key == key:
+                                return read_value
 
         return EMPTY
 
@@ -114,23 +116,26 @@ class LSMTree:
 
             self.flush_memtable()  # TODO make sure to flush at the end of each program somehow? If I had a server or REPL this would be easy - no need now that i think about it cause of the WAL
 
-            if len(self.runs) == self.max_runs_per_level:
-                self.merge()
+            if len(self.levels[0]) > self.max_runs_per_level:
+                self.merge(0)
 
             # TODO reset WAL
         else:
             # TODO write to WAL
             self.memtable_bytes_count = new_bytes_count
-    
-    def merge(self):
-        fence_pointers = FencePointers(self.density_factor)
-        filter = BloomFilter(sum([run.filter.est_num_items for run in self.runs]))  # I can replace with an actual accurate count but I don't think it's worth it, it's an estimate anyway
 
-        fds = []
-        keys = []
-        values = []
-        for i in range(self.max_runs_per_level):
-            fd = (self.data_dir / f'L0.{i}.run').open('rb')
+    def merge(self, level_idx: int):
+        level = self.levels[level_idx]
+        if level_idx + 1 >= len(self.levels):
+            self.levels.append([])
+        next_level = self.levels[level_idx + 1]
+
+        fence_pointers = FencePointers(self.density_factor)
+        filter = BloomFilter(sum([run.filter.est_num_items for run in level]))  # I can replace with an actual accurate count but I don't think it's worth it, it's an estimate anyway
+
+        fds, keys, values = [], [], []
+        for i, _ in enumerate(level):
+            fd = (self.data_dir / f'L{level_idx}.{i}.run').open('rb')
             fds.append(fd)
             k, v = self._read_kv_pair(fd)
             keys.append(k)
@@ -139,16 +144,16 @@ class LSMTree:
         # TODO does this assertion make sense?
         assert(b'' not in keys)
 
-        is_empty = [False for _ in range(self.max_runs_per_level)]  # assuming no empty runs till here (see previous assertion)
-        with (self.data_dir / 'L1.0.run' ).open('wb') as run_file:
+        is_empty = [False for _ in level]  # assuming no empty runs till here (see previous assertion)
+        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run' ).open('wb') as run_file:
             while not all(is_empty):
-                argmin_key = self.max_runs_per_level - 1
+                argmin_key = len(level) - 1
                 # correctly initialize the argmin_key (cause empty key b'' would make it instantly the argmin_key in the next for loop which we don't want)
-                for i in reversed(range(self.max_runs_per_level)):
+                for i in reversed(range(len(level))):
                     if not is_empty[i]:
                         argmin_key = i
                         break
-                for i in reversed(range(self.max_runs_per_level)):
+                for i in reversed(range(len(level))):
                     if not is_empty[i] and keys[i] < keys[argmin_key]:
                         argmin_key = i
 
@@ -156,9 +161,9 @@ class LSMTree:
                     fence_pointers.add(keys[argmin_key], run_file.tell())
                     self._write_kv_pair(run_file, keys[argmin_key], values[argmin_key])
                     filter.add(keys[argmin_key])
-                
+
                 written_key = keys[argmin_key]
-                
+
                 # read next kv pair 
                 keys[argmin_key], values[argmin_key] = self._read_kv_pair(fds[argmin_key])
                 if not keys[argmin_key]:
@@ -174,20 +179,36 @@ class LSMTree:
         for fd in fds:
             fd.close()
 
-        with (self.data_dir / f'L1.0.pointers').open('w') as pointers_file:
+        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.pointers').open('w') as pointers_file:
             pointers_file.write(fence_pointers.serialize())
 
-        with (self.data_dir / f'L1.0.filter').open('w') as filter_file:
+        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.filter').open('w') as filter_file:
             filter_file.write(filter.serialize())
 
-        # TODO empty the runs array
-        # TODO remove the files too after successfully merging.
+        # remove the files after successfully merging.
+        for i, _ in enumerate(level):
+            (self.data_dir / f'L{level_idx}.{i}.run').unlink()
+            (self.data_dir / f'L{level_idx}.{i}.pointers').unlink()
+            (self.data_dir / f'L{level_idx}.{i}.filter').unlink()
+
+        # empty the runs array
+        level.clear()
+
+        # append new run
+        next_level.append(Run(filter, fence_pointers))
+
+        # cascade the merging recursively
+        if len(next_level) > self.max_runs_per_level:
+            self.merge(level_idx + 1)
 
     def flush_memtable(self):
         fence_pointers = FencePointers(self.density_factor)
         filter = BloomFilter(len(self.memtable))
 
-        with (self.data_dir / f'L0.{self.metadata["num_runs"]}.run').open('wb') as run_file:
+        flush_level = 0  # always flush at first level
+        n_runs = len(self.levels[0])
+
+        with (self.data_dir / f'L{flush_level}.{n_runs}.run').open('wb') as run_file:
             while self.memtable:
                 k, v = self.memtable.popitem(0)
                 fence_pointers.add(k, run_file.tell())
@@ -196,16 +217,17 @@ class LSMTree:
  
         self.memtable_bytes_count = 0
 
-        self.runs.append(Run(filter, fence_pointers))
+        self.levels[flush_level].append(Run(filter, fence_pointers))
 
-        with (self.data_dir / f'L0.{self.metadata["num_runs"]}.pointers').open('w') as pointers_file:
+        with (self.data_dir / f'L{flush_level}.{n_runs}.pointers').open('w') as pointers_file:
             pointers_file.write(fence_pointers.serialize())
 
-        with (self.data_dir / f'L0.{self.metadata["num_runs"]}.filter').open('w') as filter_file:
+        with (self.data_dir / f'L{flush_level}.{n_runs}.filter').open('w') as filter_file:
             filter_file.write(filter.serialize())
 
-        self.metadata['num_runs'] += 1
-        self.save_metadata()
+        # FIXME
+        # self.metadata['levels'][0] += 1
+        # self.save_metadata()
 
     def save_metadata(self):
         with self.metadata_path.open('w') as metadata_file:
