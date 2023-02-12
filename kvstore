@@ -33,7 +33,7 @@ def parse(fd, args):
             key = row[1]
             sys.stdout.write(db.get(key.encode()).decode())
             sys.stdout.write('\n')
-            sys.stdout.flush()
+            sys.stdout.flush()  # TODO only flush when tty?
         elif op == 'q':
             return
 

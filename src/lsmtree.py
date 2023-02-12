@@ -26,7 +26,7 @@ class Run:
 
 
 class LSMTree:
-    # NOTE the fence pointers can be used to organize data into compressable blocks
+    # NOTE the fence pointers can be used to organize data into compressible blocks
     def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1000000):
         # TODO load data from WAL
         self.data_dir = Path(data_dir)
@@ -126,7 +126,6 @@ class LSMTree:
         fence_pointers = FencePointers(self.density_factor)
         filter = BloomFilter(sum([run.filter.est_num_items for run in self.runs]))  # I can replace with an actual accurate count but I don't think it's worth it, it's an estimate anyway
 
-        # TODO create bloom filter and fence pointers for this!! see self.flush_memtable()
         fds = []
         keys = []
         values = []
