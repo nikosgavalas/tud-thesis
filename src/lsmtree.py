@@ -40,26 +40,28 @@ class LSMTree:
         self.memtable_bytes_limit = memtable_bytes_limit
         self.memtable_bytes_count = 0
 
-        self.levels = [[]]
+        self.levels = []
 
         self.metadata = {
-            'levels': self.levels
+            'runs_per_level': []
         }
-        self.metadata_path = self.data_dir / 'meta'
+        self.metadata_path = self.data_dir / 'metadata'
         self.load_metadata()
 
         # load filters and pointers for levels and runs
-        # TODO FIXME persistence!
-        # for i in range(self.metadata['num_runs']):
-        #     with (self.data_dir / f'L0.{i}.pointers').open('r') as pointers_file:
-        #         data = pointers_file.read()
-        #     pointers = FencePointers(from_str=data)
+        for _ in self.metadata['runs_per_level']:
+            self.levels.append([])
+        for level_idx, n_runs in enumerate(self.metadata['runs_per_level']):
+            for r in range(n_runs):
+                with (self.data_dir / f'L{level_idx}.{r}.pointers').open('r') as pointers_file:
+                    data = pointers_file.read()
+                pointers = FencePointers(from_str=data)
 
-        #     with (self.data_dir / f'L0.{i}.filter').open('r') as filter_file:
-        #         data = filter_file.read()
-        #     filter = BloomFilter(from_str=data)
+                with (self.data_dir / f'L{level_idx}.{r}.filter').open('r') as filter_file:
+                    data = filter_file.read()
+                filter = BloomFilter(from_str=data)
 
-        #     self.runs.append(Run(filter, pointers))
+                self.levels[level_idx].append(Run(filter, pointers))
 
     def load_metadata(self):
         if self.metadata_path.is_file():
@@ -114,9 +116,9 @@ class LSMTree:
             # normally I would allocate a new memtable here so that writes can continue there
             # and then give the flushing of the old memtable to a background thread
 
-            self.flush_memtable()  # TODO make sure to flush at the end of each program somehow? If I had a server or REPL this would be easy - no need now that i think about it cause of the WAL
+            self.flush_memtable()
 
-            if len(self.levels[0]) > self.max_runs_per_level:
+            if len(self.levels[0]) > self.max_runs_per_level:  # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the first level
                 self.merge(0)
 
             # TODO reset WAL
@@ -197,6 +199,10 @@ class LSMTree:
         # append new run
         next_level.append(Run(filter, fence_pointers))
 
+        # update metadata
+        self.metadata['runs_per_level'] = [len(l) for l in self.levels]
+        self.save_metadata()
+
         # cascade the merging recursively
         if len(next_level) > self.max_runs_per_level:
             self.merge(level_idx + 1)
@@ -204,6 +210,9 @@ class LSMTree:
     def flush_memtable(self):
         fence_pointers = FencePointers(self.density_factor)
         filter = BloomFilter(len(self.memtable))
+
+        if not self.levels:
+            self.levels.append([])
 
         flush_level = 0  # always flush at first level
         n_runs = len(self.levels[0])
@@ -225,9 +234,8 @@ class LSMTree:
         with (self.data_dir / f'L{flush_level}.{n_runs}.filter').open('w') as filter_file:
             filter_file.write(filter.serialize())
 
-        # FIXME
-        # self.metadata['levels'][0] += 1
-        # self.save_metadata()
+        self.metadata['runs_per_level'] = [len(l) for l in self.levels]
+        self.save_metadata()
 
     def save_metadata(self):
         with self.metadata_path.open('w') as metadata_file:
