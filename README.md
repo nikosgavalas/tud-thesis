@@ -1,3 +1,5 @@
+[![Tests](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml/badge.svg)](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml)
+
 #### Usage:
 
 `./kvstore`

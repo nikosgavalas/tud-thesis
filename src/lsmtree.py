@@ -27,7 +27,7 @@ class Run:
 
 class LSMTree:
     # NOTE the fence pointers can be used to organize data into compressible blocks
-    def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1000000):
+    def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000):
         # TODO load data from WAL
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
@@ -79,7 +79,7 @@ class LSMTree:
                 if key in run.filter:
                     idx = run.pointers.bisect(key) - 1  # -1 because I want the index of the item on the left
                     if idx < 0:
-                        return EMPTY
+                        idx = 0
                     _, offset = run.pointers.peekitem(idx)
                     with (self.data_dir / f'L{level_idx}.{i}.run').open('rb') as run_file:
                         run_file.seek(offset)
@@ -144,7 +144,7 @@ class LSMTree:
             values.append(v)
         
         # TODO does this assertion make sense?
-        assert(b'' not in keys)
+        # assert(b'' not in keys)
 
         is_empty = [False for _ in level]  # assuming no empty runs till here (see previous assertion)
         with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run' ).open('wb') as run_file:
