@@ -28,7 +28,6 @@ class Run:
 class LSMTree:
     # NOTE the fence pointers can be used to organize data into compressible blocks
     def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000):
-        # TODO load data from WAL
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
 
@@ -47,6 +46,10 @@ class LSMTree:
         }
         self.metadata_path = self.data_dir / 'metadata'
         self.load_metadata()
+
+        self.wal_path = self.data_dir / 'wal'
+        # TODO load wal from previous run
+        # self.wal = self.wal_path.open('ab')
 
         # load filters and pointers for levels and runs
         for _ in self.metadata['runs_per_level']:
@@ -112,18 +115,15 @@ class LSMTree:
         self.memtable[key] = value  # NOTE maybe i should write after the flush? cause this way the limit is not a hard limit, it may be passed by up to 255 bytes
         new_bytes_count = self.memtable_bytes_count + len(key) + len(value)
 
-        if new_bytes_count > self.memtable_bytes_limit:
+        if new_bytes_count > self.memtable_bytes_limit: # BUG this way I risk flushing an empty memtable!
             # normally I would allocate a new memtable here so that writes can continue there
             # and then give the flushing of the old memtable to a background thread
-
             self.flush_memtable()
 
             if len(self.levels[0]) > self.max_runs_per_level:  # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the first level
                 self.merge(0)
-
-            # TODO reset WAL
         else:
-            # TODO write to WAL
+            # TODO write to wal
             self.memtable_bytes_count = new_bytes_count
 
     def merge(self, level_idx: int):
@@ -135,18 +135,15 @@ class LSMTree:
         fence_pointers = FencePointers(self.density_factor)
         filter = BloomFilter(sum([run.filter.est_num_items for run in level]))  # I can replace with an actual accurate count but I don't think it's worth it, it's an estimate anyway
 
-        fds, keys, values = [], [], []
+        fds, keys, values, is_empty = [], [], [], []
         for i, _ in enumerate(level):
             fd = (self.data_dir / f'L{level_idx}.{i}.run').open('rb')
             fds.append(fd)
             k, v = self._read_kv_pair(fd)
             keys.append(k)
             values.append(v)
+            is_empty.append(True if not k else False)
         
-        # TODO does this assertion make sense?
-        # assert(b'' not in keys)
-
-        is_empty = [False for _ in level]  # assuming no empty runs till here (see previous assertion)
         with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run' ).open('wb') as run_file:
             while not all(is_empty):
                 argmin_key = len(level) - 1
@@ -236,6 +233,8 @@ class LSMTree:
 
         self.metadata['runs_per_level'] = [len(l) for l in self.levels]
         self.save_metadata()
+
+        # TODO reset WAL
 
     def save_metadata(self):
         with self.metadata_path.open('w') as metadata_file:

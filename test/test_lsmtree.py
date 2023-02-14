@@ -33,7 +33,7 @@ class TestLSMTree(unittest.TestCase):
     
     def test_e2e_2(self):
         # highly granular, fishing for edgecases
-        for a in range(1):  # change this value to as much as you want to wait
+        for a in range(1):  # change this range to as much as you want to wait
             rng = Random(a)
             l = LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
             n_items = 10
