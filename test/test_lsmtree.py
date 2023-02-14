@@ -99,6 +99,21 @@ class TestLSMTree(unittest.TestCase):
             content = f.read()
 
         self.assertEqual(content, b'\x02a1\x03a11\x02a2\x03a22\x02a3\x03a31\x02a4\x02a4\x02a5\x02a5\x02a6\x02a6')
+    
+    def test_wal(self):
+        l1 = LSMTree(self.dir.name)
+
+        l1.set(b'a', b'1')
+        l1.set(b'b', b'2')
+        l1.set(b'c', b'3')
+
+        del l1  # delete the object to invoke the destructor and close the wal file (if not closed, it may not flush I think, BUG?)
+
+        l2 = LSMTree(self.dir.name)
+
+        self.assertEqual(l2.get(b'a'), b'1')
+        self.assertEqual(l2.get(b'b'), b'2')
+        self.assertEqual(l2.get(b'c'), b'3')
 
 
 if __name__ == "__main__":

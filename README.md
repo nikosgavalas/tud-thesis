@@ -18,5 +18,5 @@
   - [x] fence pointers persistence
   - [x] bloom filters persistence
 - [x] merging multiple levels
-- [ ] WAL
+- [x] WAL
 - [ ] asyncio

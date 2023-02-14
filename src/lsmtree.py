@@ -39,6 +39,15 @@ class LSMTree:
         self.memtable_bytes_limit = memtable_bytes_limit
         self.memtable_bytes_count = 0
 
+        self.wal_path = self.data_dir / 'wal'
+        if self.wal_path.is_file():
+            with self.wal_path.open('rb') as wal_file:
+                k, v = self._read_kv_pair(wal_file)
+                while k:
+                    self.memtable[k] = v  # write the value to the memtable directly, no checks for amount of bytes etc.
+                    k, v = self._read_kv_pair(wal_file)
+        self.wal_file = self.wal_path.open('ab')
+
         self.levels = []
 
         self.metadata = {
@@ -46,10 +55,6 @@ class LSMTree:
         }
         self.metadata_path = self.data_dir / 'metadata'
         self.load_metadata()
-
-        self.wal_path = self.data_dir / 'wal'
-        # TODO load wal from previous run
-        # self.wal = self.wal_path.open('ab')
 
         # load filters and pointers for levels and runs
         for _ in self.metadata['runs_per_level']:
@@ -65,6 +70,9 @@ class LSMTree:
                 filter = BloomFilter(from_str=data)
 
                 self.levels[level_idx].append(Run(filter, pointers))
+    
+    def __del__(self):
+        self.wal_file.close()
 
     def load_metadata(self):
         if self.metadata_path.is_file():
@@ -123,7 +131,8 @@ class LSMTree:
             if len(self.levels[0]) > self.max_runs_per_level:  # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the first level
                 self.merge(0)
         else:
-            # TODO write to wal
+            # write to wal
+            self._write_kv_pair(self.wal_file, key, value)
             self.memtable_bytes_count = new_bytes_count
 
     def merge(self, level_idx: int):
@@ -234,7 +243,9 @@ class LSMTree:
         self.metadata['runs_per_level'] = [len(l) for l in self.levels]
         self.save_metadata()
 
-        # TODO reset WAL
+        # reset WAL
+        self.wal_file.close()
+        self.wal_file = self.wal_path.open('wb')
 
     def save_metadata(self):
         with self.metadata_path.open('w') as metadata_file:
