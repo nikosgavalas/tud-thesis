@@ -118,7 +118,7 @@ class LSMTree:
         fd.write(value)
 
     def set(self, key: bytes, value: bytes = EMPTY):
-        assert(type(key) is bytes and type(value) is bytes and len(key) < MAX_KEY_LENGTH and len(value) < MAX_VALUE_LENGTH) # TODO assert that key and value are non empty?
+        assert(type(key) is bytes and type(value) is bytes and 0 < len(key) < MAX_KEY_LENGTH and 0 < len(value) < MAX_VALUE_LENGTH)
 
         self.memtable[key] = value  # NOTE maybe i should write after the flush? cause this way the limit is not a hard limit, it may be passed by up to 255 bytes
         new_bytes_count = self.memtable_bytes_count + len(key) + len(value)
