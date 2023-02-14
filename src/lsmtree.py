@@ -123,7 +123,7 @@ class LSMTree:
         self.memtable[key] = value  # NOTE maybe i should write after the flush? cause this way the limit is not a hard limit, it may be passed by up to 255 bytes
         new_bytes_count = self.memtable_bytes_count + len(key) + len(value)
 
-        if new_bytes_count > self.memtable_bytes_limit: # BUG this way I risk flushing an empty memtable!
+        if new_bytes_count > self.memtable_bytes_limit:
             # normally I would allocate a new memtable here so that writes can continue there
             # and then give the flushing of the old memtable to a background thread
             self.flush_memtable()
