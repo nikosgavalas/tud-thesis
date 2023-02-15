@@ -1,5 +1,11 @@
 [![Tests](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml/badge.svg)](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml)
 
+Key-Value Store based on an LSM Tree with size-tiered compaction.
+
+#### Requirements:
+
+Python 3.11, `pip install -r requirements.txt`
+
 #### Usage:
 
 `./kvstore`
