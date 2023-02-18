@@ -4,17 +4,16 @@ TODO: consider using mmap for the files
 '''
 
 import struct
-import json
-from pathlib import Path
 
 from sortedcontainers import SortedDict
 
+from src.kvstore import KVStore, EMPTY
 from src.bloom import BloomFilter
 from src.fence import FencePointers
 
 
 # do not change these
-EMPTY = b''
+# TODO maybe bump these up to 65536? the drawback is that I'll need two bytes for len(key) and len(value) in the binary encoding
 MAX_KEY_LENGTH = 256
 MAX_VALUE_LENGTH = 256
 
@@ -25,13 +24,18 @@ class Run:
         self.pointers = pointers
 
 
-class LSMTree:
+class LSMTree(KVStore):
     # NOTE the fence pointers can be used to organize data into compressible blocks
     def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(exist_ok=True)
+        super().__init__(data_dir)
 
-        assert(max_runs_per_level >= 1)
+        if 'type' in self.metadata:
+            assert self.metadata['type'] == 'lsmtree', 'incorrect directory structure'
+        else:
+            self.metadata['type'] = 'lsmtree'
+            self.metadata['runs_per_level'] = []
+
+        assert max_runs_per_level >= 1
         self.max_runs_per_level = max_runs_per_level
         self.density_factor = density_factor
 
@@ -49,12 +53,6 @@ class LSMTree:
         self.wal_file = self.wal_path.open('ab')
 
         self.levels = []
-
-        self.metadata = {
-            'runs_per_level': []
-        }
-        self.metadata_path = self.data_dir / 'metadata'
-        self.load_metadata()
 
         # load filters and pointers for levels and runs
         for _ in self.metadata['runs_per_level']:
@@ -74,13 +72,8 @@ class LSMTree:
     def __del__(self):
         self.wal_file.close()
 
-    def load_metadata(self):
-        if self.metadata_path.is_file():
-            with self.metadata_path.open('r') as metadata_file:
-                self.metadata = json.loads(metadata_file.read())
-
     def get(self, key: bytes):
-        assert(type(key) is bytes and len(key) < MAX_KEY_LENGTH)
+        assert type(key) is bytes and len(key) < MAX_KEY_LENGTH
 
         if key in self.memtable:
             return self.memtable[key]
@@ -118,7 +111,7 @@ class LSMTree:
         fd.write(value)
 
     def set(self, key: bytes, value: bytes = EMPTY):
-        assert(type(key) is bytes and type(value) is bytes and 0 < len(key) < MAX_KEY_LENGTH and len(value) < MAX_VALUE_LENGTH)
+        assert type(key) is bytes and type(value) is bytes and 0 < len(key) < MAX_KEY_LENGTH and len(value) < MAX_VALUE_LENGTH
 
         self.memtable[key] = value  # NOTE maybe i should write after the flush? cause this way the limit is not a hard limit, it may be passed by up to 255 bytes
         new_bytes_count = self.memtable_bytes_count + len(key) + len(value)
@@ -246,7 +239,3 @@ class LSMTree:
         # reset WAL
         self.wal_file.close()
         self.wal_file = self.wal_path.open('wb')
-
-    def save_metadata(self):
-        with self.metadata_path.open('w') as metadata_file:
-            metadata_file.write(json.dumps(self.metadata))
