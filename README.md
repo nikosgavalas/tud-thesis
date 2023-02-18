@@ -12,7 +12,7 @@ Python 3.11, `pip install -r requirements.txt`
 
 #### Usage:
 
-`./kvstore`. AT the moment this will only run the LSM store.
+`./kvstore`. At the moment this will only run the LSM store.
 
 #### Tests:
 
