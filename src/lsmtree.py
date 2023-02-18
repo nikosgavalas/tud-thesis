@@ -70,6 +70,10 @@ class LSMTree(KVStore):
                 self.levels[level_idx].append(Run(filter, pointers))
     
     def __del__(self):
+        self.close()
+
+    def close(self):
+        # close the wal file (if not closed, it may not flush)
         self.wal_file.close()
 
     def get(self, key: bytes):

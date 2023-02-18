@@ -107,7 +107,7 @@ class TestLSMTree(unittest.TestCase):
         l1.set(b'b', b'2')
         l1.set(b'c', b'3')
 
-        del l1  # delete the object to invoke the destructor and close the wal file (if not closed, it may not flush I think, BUG?)
+        l1.close()
 
         l2 = LSMTree(self.dir.name)
 
