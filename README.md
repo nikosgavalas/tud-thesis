@@ -38,3 +38,7 @@ Python 3.11, `pip install -r requirements.txt`
   - [ ] compaction of segments of the log
   - [ ] merging of multiple segments
   - [ ] asyncio
+- [ ] SimpleLog
+  - [ ] basis
+  - [ ] compaction
+  - [ ] asyncio
