@@ -34,7 +34,7 @@ Python 3.11, `pip install -r requirements.txt`
 - [ ] IndexedLog
   - [x] basis
   - [ ] hash index
-  - [ ] logical addresses
+  - [x] logical addresses
   - [ ] compaction of segments of the log
   - [ ] merging of multiple segments
   - [ ] asyncio
