@@ -7,15 +7,9 @@ import struct
 
 from sortedcontainers import SortedDict
 
-from src.kvstore import KVStore, EMPTY
+from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 from src.bloom import BloomFilter
 from src.fence import FencePointers
-
-
-# do not change these
-# TODO maybe bump these up to 65536? the drawback is that I'll need two bytes for len(key) and len(value) in the binary encoding
-MAX_KEY_LENGTH = 256
-MAX_VALUE_LENGTH = 256
 
 
 class Run:
@@ -27,15 +21,15 @@ class Run:
 class LSMTree(KVStore):
     # NOTE the fence pointers can be used to organize data into compressible blocks
     def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000):
+        self.type = 'lsmtree'
         super().__init__(data_dir)
 
-        if 'type' in self.metadata:
-            assert self.metadata['type'] == 'lsmtree', 'incorrect directory structure'
-        else:
-            self.metadata['type'] = 'lsmtree'
-            self.metadata['runs_per_level'] = []
+        self.metadata['runs_per_level'] = []
 
         assert max_runs_per_level >= 1
+        assert density_factor > 0
+        assert memtable_bytes_limit > 0
+
         self.max_runs_per_level = max_runs_per_level
         self.density_factor = density_factor
 
