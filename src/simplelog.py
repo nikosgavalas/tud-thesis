@@ -2,7 +2,7 @@ from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 
 
 class SimpleLog(KVStore):
-    def __init__(self, data_dir='./data'):
+    def __init__(self, data_dir='./data', compaction_interval=1_024):
         self.type = 'simplelog'
         super().__init__(data_dir)
 

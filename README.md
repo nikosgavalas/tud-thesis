@@ -1,11 +1,11 @@
 [![Tests](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml/badge.svg)](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml)
 
-This repo contains the implementations of two types of key-value stores:
-1. KV store based on an LSM Tree with size-tiered compaction.
-2. KV store based on [Microsoft's FASTER](https://microsoft.github.io/FASTER/docs/td-research-papers/).
-3. KV store based on an append-only log with in-memory hash-based indexing plus WAL
+This repo contains the implementation of a key-value store with three types of backend engines:
+1. LSM Tree backend with size-tiered compaction.
+2. Backend based on [Microsoft's FASTER](https://microsoft.github.io/FASTER/docs/td-research-papers/).
+3. Backend based on an append-only log with in-memory hash-based indexing.
 
-The goal is to compare the performances and determine for which use-cases each type is more suitable, in the context of state management in distributed stream processing.
+The goal is to compare the performances and determine for which use-cases each type is more suitable, in the context of incremental state management for distributed stream processing.
 
 #### Requirements:
 
@@ -13,7 +13,7 @@ Python 3.11, `pip install -r requirements.txt`
 
 #### Usage:
 
-`./kvstore`. At the moment this will only run the LSM store.
+`./kvstore`
 
 #### Tests:
 
