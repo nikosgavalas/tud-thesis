@@ -3,8 +3,6 @@ LSM Tree with size-tiered compaction (write-optimized)
 TODO: consider using mmap for the files
 '''
 
-import struct
-
 from sortedcontainers import SortedDict
 
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
@@ -91,22 +89,6 @@ class LSMTree(KVStore):
                                 return read_value
 
         return EMPTY
-
-    def _read_kv_pair(self, fd):
-        first_byte = fd.read(1)
-        if not first_byte:
-            return EMPTY, EMPTY
-        key_len = struct.unpack('<B', first_byte)[0]
-        key = fd.read(key_len)
-        val_len = struct.unpack('<B', fd.read(1))[0]
-        value = fd.read(val_len)
-        return key, value
-
-    def _write_kv_pair(self, fd, key, value):
-        fd.write(struct.pack('<B', len(key)))
-        fd.write(key)
-        fd.write(struct.pack('<B', len(value)))
-        fd.write(value)
 
     def set(self, key: bytes, value: bytes = EMPTY):
         assert type(key) is bytes and type(value) is bytes and 0 < len(key) < MAX_KEY_LENGTH and len(value) < MAX_VALUE_LENGTH

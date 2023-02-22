@@ -3,6 +3,7 @@ Base class for IndexedLog and LSMTree classes.
 '''
 
 import json
+import struct
 from pathlib import Path
 
 
@@ -33,10 +34,30 @@ class KVStore():
     def save_metadata(self):
         with self.metadata_path.open('w') as metadata_file:
             metadata_file.write(json.dumps(self.metadata))
-    
+
+    def _read_kv_pair(self, fd, return_offset: int = False):
+        offset = fd.tell()
+        first_byte = fd.read(1)
+        if not first_byte:
+            return (EMPTY, EMPTY, 0) if return_offset else (EMPTY, EMPTY)
+        key_len = struct.unpack('<B', first_byte)[0]
+        key = fd.read(key_len)
+        val_len = struct.unpack('<B', fd.read(1))[0]
+        value = fd.read(val_len)
+        return (key, value, offset) if return_offset else (key, value)
+
+    def _write_kv_pair(self, fd, key, value):
+        fd.write(struct.pack('<B', len(key)))
+        fd.write(key)
+        fd.write(struct.pack('<B', len(value)))
+        fd.write(value)
+
     # abstract methods
     def get(self, key: bytes):
-        raise NotImplementedError("")
+        raise NotImplementedError('')
 
     def set(self, key: bytes, value: bytes):
-        raise NotImplementedError("")
+        raise NotImplementedError('')
+
+    def close(self):
+        raise NotImplementedError('')

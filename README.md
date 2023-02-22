@@ -3,6 +3,7 @@
 This repo contains the implementations of two types of key-value stores:
 1. KV store based on an LSM Tree with size-tiered compaction.
 2. KV store based on [Microsoft's FASTER](https://microsoft.github.io/FASTER/docs/td-research-papers/).
+3. KV store based on an append-only log with in-memory hash-based indexing plus WAL
 
 The goal is to compare the performances and determine for which use-cases each type is more suitable, in the context of state management in distributed stream processing.
 
@@ -39,6 +40,6 @@ Python 3.11, `pip install -r requirements.txt`
   - [ ] merging of multiple segments
   - [ ] asyncio
 - [ ] SimpleLog
-  - [ ] basis
+  - [x] basis
   - [ ] compaction
   - [ ] asyncio
