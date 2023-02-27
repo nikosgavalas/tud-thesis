@@ -58,10 +58,13 @@ class TestSimpleLog(unittest.TestCase):
             rand_idx = rng.randint(0, n_items - 1)
             rand_key = keys[rand_idx]
             rand_value = values[rand_idx]
-            if rand_key in dict and not rand_value:
-                del dict[rand_key]
+
+            if not rand_value:
+                if rand_key in dict:
+                    del dict[rand_key]
             else:
                 dict[rand_key] = rand_value
+
             l.set(rand_key, rand_value)
 
         for k, v in dict.items():

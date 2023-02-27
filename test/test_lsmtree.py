@@ -47,10 +47,13 @@ class TestLSMTree(unittest.TestCase):
                 rand_idx = rng.randint(0, n_items - 1)
                 rand_key = keys[rand_idx]
                 rand_value = values[rand_idx]
-                if rand_key in dict and not rand_value:
-                    del dict[rand_key]  # emulating the kvstore's behaviour ("value 0" == delete)
+
+                if not rand_value:
+                    if rand_key in dict:
+                        del dict[rand_key]  # emulating the kvstore's behaviour ("value 0" == delete)
                 else:
                     dict[rand_key] = rand_value
+
                 l.set(rand_key, rand_value)
 
             for k, v in dict.items():
@@ -71,11 +74,18 @@ class TestLSMTree(unittest.TestCase):
             rand_idx = rng.randint(0, n_items - 1)
             rand_key = keys[rand_idx]
             rand_value = values[rand_idx]
-            if rand_key in dict and not rand_value:
-                del dict[rand_key]
+
+            if not rand_value: # TODO fix the rest ones as this one!
+                if rand_key in dict:
+                    del dict[rand_key]
             else:
                 dict[rand_key] = rand_value
+
             l.set(rand_key, rand_value)
+
+        # also test a reset here
+        l.close()
+        l = LSMTree(self.dir.name)
 
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))

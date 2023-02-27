@@ -22,7 +22,8 @@ class LSMTree(KVStore):
         self.type = 'lsmtree'
         super().__init__(data_dir)
 
-        self.metadata['runs_per_level'] = []
+        if 'runs_per_level' not in self.metadata:
+            self.metadata['runs_per_level'] = []
 
         assert max_runs_per_level >= 1
         assert density_factor > 0

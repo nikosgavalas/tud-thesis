@@ -4,6 +4,10 @@ This repo contains the implementation of a key-value store with three types of b
 1. LSM Tree with size-tiered compaction.
 2. [Microsoft's FASTER](https://microsoft.github.io/FASTER/docs/td-research-papers/).
 3. Append-only log with in-memory hash-based indexing.
+This repo contains the implementation of a key-value store with three types of backend engines:
+1. LSM Tree backend with size-tiered compaction (like [Cassandra](https://cassandra.apache.org/_/index.html)).
+2. Backend based on [Microsoft's FASTER](https://microsoft.github.io/FASTER/docs/td-research-papers/).
+3. Backend based on an append-only log with in-memory hash-based indexing (similar to [Bitcask](https://riak.com/assets/bitcask-intro.pdf)).
 
 The goal is to compare the performances and determine for which use-cases each type is more suitable, in the context of incremental state management for distributed stream processing.
 
