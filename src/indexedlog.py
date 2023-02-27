@@ -71,6 +71,7 @@ class IndexedLog(KVStore):
 
     def close(self):
         self.flush(self.tail_offset)  # flush everything
+        self.save_metadata()
 
     def get(self, key: bytes):
         assert type(key) is bytes and 0 < len(key) <= self.max_key_len

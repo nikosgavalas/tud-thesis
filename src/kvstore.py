@@ -25,7 +25,6 @@ class KVStore():
         else:
             self.metadata['type'] = self.type
 
-
     def load_metadata(self):
         if self.metadata_path.is_file():
             with self.metadata_path.open('r') as metadata_file:
@@ -35,16 +34,15 @@ class KVStore():
         with self.metadata_path.open('w') as metadata_file:
             metadata_file.write(json.dumps(self.metadata))
 
-    def _read_kv_pair(self, fd, return_offset: int = False):
-        offset = fd.tell()
+    def _read_kv_pair(self, fd):
         first_byte = fd.read(1)
         if not first_byte:
-            return (EMPTY, EMPTY, 0) if return_offset else (EMPTY, EMPTY)
+            return EMPTY, EMPTY
         key_len = struct.unpack('<B', first_byte)[0]
         key = fd.read(key_len)
         val_len = struct.unpack('<B', fd.read(1))[0]
         value = fd.read(val_len)
-        return (key, value, offset) if return_offset else (key, value)
+        return key, value
 
     def _write_kv_pair(self, fd, key, value):
         fd.write(struct.pack('<B', len(key)))

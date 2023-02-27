@@ -67,6 +67,7 @@ class LSMTree(KVStore):
     def close(self):
         # close the wal file (if not closed, it may not flush)
         self.wal_file.close()
+        self.save_metadata()
 
     def get(self, key: bytes):
         assert type(key) is bytes and len(key) < MAX_KEY_LENGTH
