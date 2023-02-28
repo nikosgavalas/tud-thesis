@@ -1,9 +1,5 @@
 [![Tests](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml/badge.svg)](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml)
 
-This repo contains the implementation of a key-value store with three types of backend engines, each based on:
-1. LSM Tree with size-tiered compaction.
-2. [Microsoft's FASTER](https://microsoft.github.io/FASTER/docs/td-research-papers/).
-3. Append-only log with in-memory hash-based indexing.
 This repo contains the implementation of a key-value store with three types of backend engines:
 1. LSM Tree backend with size-tiered compaction (like [Cassandra](https://cassandra.apache.org/_/index.html)).
 2. Backend based on [Microsoft's FASTER](https://microsoft.github.io/FASTER/docs/td-research-papers/).
