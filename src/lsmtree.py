@@ -45,7 +45,7 @@ class LSMTree(KVStore):
                     k, v = self._read_kv_pair(wal_file)
         self.wal_file = self.wal_path.open('ab')
 
-        self.levels = []
+        self.levels: list[list[Run]] = []
 
         # load filters and pointers for levels and runs
         for _ in self.metadata['runs_per_level']:

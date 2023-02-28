@@ -1,29 +1,57 @@
-import os
+from pathlib import Path
 
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 
 
 class SimpleLog(KVStore):
-    def __init__(self, data_dir='./data', compaction_threshold=4_000_000):
+    def __init__(self, data_dir='./data', max_runs_per_level=3, threshold=4_000_000):
         self.type = 'simplelog'
         super().__init__(data_dir)
 
-        self.compaction_threshold = compaction_threshold
-        self.compaction_counter = 0
+        # about state:
+        # the state here, runs_per_level, contrary to the LSMTree implementation, keeps track
+        # of all the files not just those that have been compacted/merged.
+        # this means that i have to update it **BEFORE** any new files are written. this is because the index
+        # always points to the most recent record, which may be to a new log.
+        # this means that i have to check for unexisted files
+        # in the LSMTree implementation, i have idempotency (i can rebuild stuff based on previous files)
+        # one more thing about the state i just realized: only runs in the first level need compaction.
+        # the merged files in greater levels are already compacted in a sense
 
-        self.hash_index = {}
+        # TODO i may loose unflushed records, I should check how I can turn off buffering and flush always
+        # also, I can detect if a record is malformed by checking if the len(key) and len(value) are equal
+        # to their encoding byte when reading
 
-        self.log_path = self.data_dir / 'log'
-        if self.log_path.is_file():
-            with self.log_path.open('rb') as log_file:
-                offset = log_file.tell()
-                k, v = self._read_kv_pair(log_file)
-                self.compaction_counter += len(k) + len(v)
-                while k:
-                    self.hash_index[k] = offset
+        # TODO what do i do with the deletes?
+
+        # actually I completely removed compaction. It adds a lot of complexity for no benefit, since
+        # all the benefit is actually done in the merging phase.
+        assert max_runs_per_level >= 1
+        assert threshold > 0
+
+        self.max_runs_per_level = max_runs_per_level
+        self.threshold = threshold
+        self.counter = 0
+
+        self.hash_index: dict[bytes, Record] = {}
+
+        # do file discovery
+        data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if f.is_file()]
+        self.levels: list[int] = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
+        for i in data_files_levels:
+            self.levels[i] += 1
+
+        # rebuild the index 
+        for level_idx, n_runs in enumerate(self.levels):
+            for run_idx in range(n_runs):
+                log_path = self.data_dir / f'L{level_idx}.{run_idx}.run'
+                with log_path.open('rb') as log_file:
                     offset = log_file.tell()
-                    k, v = self._read_kv_pair(log_file)
-                    self.compaction_counter += len(k) + len(v)
+                    k, _ = self._read_kv_pair(log_file)
+                    while k:
+                        self.hash_index[k] = Record(level_idx, run_idx, offset)
+                        offset = log_file.tell()
+                        k, _ = self._read_kv_pair(log_file)
 
     def __del__(self):
         self.close()
@@ -37,9 +65,10 @@ class SimpleLog(KVStore):
         if key not in self.hash_index:
             return EMPTY
 
-        with self.log_path.open('rb') as log_file:
-            offset = self.hash_index[key]
-            log_file.seek(offset)
+        record = self.hash_index[key]
+
+        with (self.data_dir / str(record)).open('rb') as log_file:
+            log_file.seek(record.offset)
             k, v = self._read_kv_pair(log_file)
             assert k == key
             return v
@@ -47,33 +76,64 @@ class SimpleLog(KVStore):
     def set(self, key: bytes, value: bytes = EMPTY):
         assert type(key) is bytes and type(value) is bytes and 0 < len(key) <= MAX_KEY_LENGTH and len(value) <= MAX_VALUE_LENGTH
 
-        if self.compaction_counter >= self.compaction_threshold:
-            self.compact()
-
-        with self.log_path.open('ab') as log_file:
+        # always write the latest log of the first level
+        log_path = self.data_dir / f'L{0}.{self.levels[0]}.run'
+        with log_path.open('ab') as log_file:  # TODO consider keeping this file open all the time? will this make things considerably faster?
             offset = log_file.tell()
             self._write_kv_pair(log_file, key, value)
-            self.hash_index[key] = offset
-            self.compaction_counter += len(key) + len(value)
+            self.hash_index[key] = Record(0, self.levels[0], offset)
+            self.counter += len(key) + len(value)
 
-    def compact(self):
-        compacted_log_path = self.log_path.with_suffix('.tmp')
-        new_hash_index = {}
+        if self.counter >= self.threshold:
+            self.counter = 0
+            self.levels[0] += 1
 
-        with self.log_path.open('rb') as log_file, compacted_log_path.open('ab') as compacted_log_file:
-            read_offset = log_file.tell()
-            k, v = self._read_kv_pair(log_file)
-            while k:
-                if k in self.hash_index and read_offset == self.hash_index[k]:
-                    write_offset = compacted_log_file.tell()
-                    self._write_kv_pair(compacted_log_file, k, v)
-                    new_hash_index[k] = write_offset
-                read_offset = log_file.tell()
-                k, v = self._read_kv_pair(log_file)
+        if self.levels[0] > self.max_runs_per_level:
+            self.merge(0)
 
-        # rename the file back
-        compacted_log_path.rename(compacted_log_path.with_suffix(''))
-        # swap the index with the new one
-        self.hash_index = new_hash_index
-        # reset the compaction counter
-        self.compaction_counter = 0
+    def merge(self, level: int):
+        next_level = level + 1
+        if level + 1 >= len(self.levels):
+            self.levels.append(0)
+        next_run = self.levels[level + 1]
+
+        for run_idx in range(self.levels[level]):
+            with (self.data_dir / f'L{level}.{run_idx}.run').open('rb') as src_file, (self.data_dir / f'L{next_level}.{next_run}.run').open('ab') as dst_file:
+                src_offset = src_file.tell()
+                k, v = self._read_kv_pair(src_file)
+                while k:
+                    if k in self.hash_index:
+                        if self.hash_index[k] == Record(level, run_idx, src_offset):
+                            dst_offset = dst_file.tell()
+                            self._write_kv_pair(dst_file, k, v)
+                            self.hash_index[k] = Record(next_level, next_run, dst_offset)
+                    src_offset = src_file.tell()
+                    k, v = self._read_kv_pair(src_file)
+
+        # bump the runs counter
+        self.levels[next_level] += 1
+        # merge recursively
+        if self.levels[next_level] > self.max_runs_per_level:
+            self.merge(next_level)
+
+
+class Record():
+    def __init__(self, level: int, run: int, offset: int):
+        self.level = level
+        self.run = run
+        self.offset = offset
+
+    def __eq__(self, other):
+        # I can implement lt, le, gt, ge in the same way if needed
+        return ((self.level, self.run, self.offset)
+            == (other.level, other.run, other.offset))
+
+    def __ne__(self, other):
+        return ((self.level, self.run, self.offset)
+            != (other.level, other.run, other.offset))
+
+    def __str__(self):
+        return f'L{self.level}.{self.run}.run'
+
+    def __repr__(self):
+        return f'({self.level},{self.run},{self.offset})'

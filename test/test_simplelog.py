@@ -70,15 +70,8 @@ class TestSimpleLog(unittest.TestCase):
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
 
-    def test_compaction(self):
-        l = SimpleLog(self.dir.name, compaction_threshold=6)
-        for i in range(10):
-            l.set(b'a', str(i).encode())
-        with (self.dir / 'log').open('rb') as f:
-            self.assertEqual(f.read(), b'\x01a\x018\x01a\x019')
-
     def test_rebuild(self):
-        l1 = SimpleLog(self.dir.name, compaction_threshold=10)
+        l1 = SimpleLog(self.dir.name, threshold=10)
 
         l1.set(b'a', b'1')
         l1.set(b'b', b'2')

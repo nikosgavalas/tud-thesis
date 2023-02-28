@@ -23,9 +23,9 @@ def signal_handler(sig, frame):
 def parse(fd, args):
     if args.engine == 'lsmtree':
         db = LSMTree(args.d, args.runs_per_level, args.density_factor, args.memory_limit)
-    elif args.engine == 'idxlog':
+    elif args.engine == 'indexedlog':
         db = IndexedLog(args.d, args.max_key_len, args.max_val_len, args.memory, args.ro_lag, args.flush_interval)
-    elif args.engine == 'smplog':
+    elif args.engine == 'simplelog':
         db = SimpleLog(args.d, args.compaction_threshold)
  
     csv_reader = csv.reader(fd, delimiter=' ', quotechar='"')
@@ -67,15 +67,15 @@ def main():
     lsm_parser.add_argument('--density-factor', type=int, help='density factor', default=20)
     lsm_parser.add_argument('--memory-limit', type=int, help='memtable bytes limit', default=1_000_000)
 
-    idxlog_parser = subparsers.add_parser('idxlog')
+    idxlog_parser = subparsers.add_parser('indexedlog')
     idxlog_parser.add_argument('--max-key-len', type=int, help='max key length', default=4)
     idxlog_parser.add_argument('--max-val-len', type=int, help='max value length', default=4)
     idxlog_parser.add_argument('--memory', type=int, help='memory segment length in bytes', default=1_048_576)
     idxlog_parser.add_argument('--ro-lag', type=int, help='read-only lag interval in num. of records', default=1_024)
     idxlog_parser.add_argument('--flush-interval', type=int, help='flush interval in num. of records', default=4_096)
 
-    smplog_parser = subparsers.add_parser('smplog')
-    smplog_parser.add_argument('--compaction-threshold', type=int, help='threshold that triggers compaction', default=4_000_000)
+    smplog_parser = subparsers.add_parser('simplelog')
+    smplog_parser.add_argument('--threshold', type=int, help='threshold that triggers compaction in bytes', default=4_000_000)
 
     args = parser.parse_args()
     if not args.engine:

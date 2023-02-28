@@ -46,6 +46,6 @@ Python 3.11, `pip install -r requirements.txt`
 - [ ] SimpleLog
   - [x] basis
   - [x] compaction
-  - [ ] merging multiple levels
+  - [x] merging multiple levels
   - [ ] asyncio
 - [ ] Benchmarks
