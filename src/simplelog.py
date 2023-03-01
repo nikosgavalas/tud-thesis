@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 
 

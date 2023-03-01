@@ -67,6 +67,10 @@ class TestSimpleLog(unittest.TestCase):
 
             l.set(rand_key, rand_value)
 
+        # also test index rebuilding here
+        l.close()
+        l = SimpleLog(self.dir.name)
+
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
 
