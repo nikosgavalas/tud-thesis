@@ -8,10 +8,10 @@ from pathlib import Path
 # make it runnable from the root level
 sys.path.append('.')
 
-from src.indexedlog import IndexedLog
+from src.hybridlog import HybridLog
 
 
-class TestIndexedLog(unittest.TestCase):
+class TestHybridLog(unittest.TestCase):
     dir = Path('./data_test')
 
     def setUp(self):
@@ -23,7 +23,7 @@ class TestIndexedLog(unittest.TestCase):
         shutil.rmtree(self.dir.name)
     
     def test_e2e_1(self):
-        l = IndexedLog(self.dir.name, mem_segment_len=3, ro_lag_interval=1, flush_interval=1)
+        l = HybridLog(self.dir.name, mem_segment_len=3, ro_lag_interval=1, flush_interval=1)
 
         l.set(b'asdf', b'\x00\x01\x00\x00')
         l.set(b'b', b'\x00\x00\x02\x00')
@@ -41,7 +41,7 @@ class TestIndexedLog(unittest.TestCase):
     def test_e2e_2(self):
         # high-granularity test
         rng = Random(1)
-        l = IndexedLog(self.dir.name, mem_segment_len=10, ro_lag_interval=2, flush_interval=4)
+        l = HybridLog(self.dir.name, mem_segment_len=10, ro_lag_interval=2, flush_interval=4)
         n_items = 100
         n_iter = 1_000_000
 

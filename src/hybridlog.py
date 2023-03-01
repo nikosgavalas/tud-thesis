@@ -35,9 +35,9 @@ import struct
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 
 
-class IndexedLog(KVStore):
+class HybridLog(KVStore):
     def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=1_048_576, ro_lag_interval=1_024, flush_interval=4_096):  # 1Mi, 1Ki, 4Ki
-        self.type = 'indexedlog'
+        self.type = 'hybridlog'
         super().__init__(data_dir)
 
         # TODO if there are files in the directory, rebuild the index from them (write compaction first)

@@ -32,14 +32,14 @@ Python 3.11, `pip install -r requirements.txt`
   - [x] merging multiple levels
   - [x] WAL
   - [ ] asyncio
-- [ ] IndexedLog
+- [ ] HybridLog
   - [x] basis
   - [ ] hash index
   - [x] logical addresses
   - [ ] compaction of segments of the log
   - [ ] merging of multiple segments
   - [ ] asyncio
-- [ ] SimpleLog
+- [ ] AppendLog
   - [x] basis
   - [x] compaction
   - [x] merging multiple levels

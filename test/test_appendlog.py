@@ -8,10 +8,10 @@ from pathlib import Path
 # make it runnable from the root level
 sys.path.append('.')
 
-from src.simplelog import SimpleLog
+from src.appendlog import AppendLog
 
 
-class TestSimpleLog(unittest.TestCase):
+class TestAppendLog(unittest.TestCase):
     dir = Path('./data_test')
 
     def setUp(self):
@@ -23,7 +23,7 @@ class TestSimpleLog(unittest.TestCase):
         shutil.rmtree(self.dir.name)
     
     def test_e2e_1(self):
-        l = SimpleLog(self.dir.name)
+        l = AppendLog(self.dir.name)
 
         l.set(b'a', b'a')
         l.set(b'asdf', b'\x00\x01\x00\x00')
@@ -46,7 +46,7 @@ class TestSimpleLog(unittest.TestCase):
 
     def test_e2e_2(self):
         rng = Random(1)
-        l = SimpleLog(self.dir.name)
+        l = AppendLog(self.dir.name)
         n_items = 100
         n_iter = 1_000
 
@@ -69,13 +69,13 @@ class TestSimpleLog(unittest.TestCase):
 
         # also test index rebuilding here
         l.close()
-        l = SimpleLog(self.dir.name)
+        l = AppendLog(self.dir.name)
 
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
 
     def test_rebuild(self):
-        l1 = SimpleLog(self.dir.name, threshold=10)
+        l1 = AppendLog(self.dir.name, threshold=10)
 
         l1.set(b'a', b'1')
         l1.set(b'b', b'2')
@@ -83,7 +83,7 @@ class TestSimpleLog(unittest.TestCase):
 
         l1.close()
 
-        l2 = SimpleLog(self.dir.name)
+        l2 = AppendLog(self.dir.name)
 
         self.assertEqual(l2.get(b'a'), b'1')
         self.assertEqual(l2.get(b'b'), b'2')
