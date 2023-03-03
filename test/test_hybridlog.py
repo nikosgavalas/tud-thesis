@@ -65,6 +65,15 @@ class TestHybridLog(unittest.TestCase):
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
 
+    def test_offset_translation(self):
+        rng = Random(1)
+        l = HybridLog(self.dir.name)
+        self.assertEqual(l.LA_to_file_offset(1), 0)
+        self.assertEqual(l.file_offset_to_LA(0), 1)
+        for _ in range(100):
+            i = rng.randint(0, 100)
+            self.assertEqual(l.file_offset_to_LA(l.LA_to_file_offset(i)), i)
+
 
 if __name__ == "__main__":
     unittest.main()

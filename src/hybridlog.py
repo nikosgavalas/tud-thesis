@@ -28,6 +28,9 @@ you want to do a blind update, like "increment by 1" so you need to do a read fi
 give it a specific name like copy-on-update, it's just the way you'd do it naturally...
 TODO: compaction of the log on disk
 Note: for the compaction you don't actually need extra memory, you can just use the index that you already have in-mem.
+I just realized compaction (and also merging) is not possible here trivially. One needs to keep track of an array
+of the previous file sizes/maxoffset to be able to maintain a continuous logical address space, which adds too much
+overhead in the address translations, plus requires extra bookkeeping (persistence). I am not doing it.
 '''
 
 import struct
@@ -37,7 +40,8 @@ from src.ringbuffer import RingBuffer
 
 
 class HybridLog(KVStore):
-    def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=1_048_576, ro_lag_interval=1_024, flush_interval=4_096):  # 1Mi, 1Ki, 4Ki
+    def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=2**20,
+            ro_lag_interval=2**10, flush_interval=(4 * 2**10)):
         self.type = 'hybridlog'
         super().__init__(data_dir)
 
@@ -72,6 +76,28 @@ class HybridLog(KVStore):
         self.flush(self.tail_offset)  # flush everything
         self.save_metadata()
 
+    def _read_kv_pair(self, fd, file_offset=None):
+            if not file_offset:
+                file_offset = fd.tell()
+            first_byte = fd.read(1)
+            if not first_byte:
+                return EMPTY, EMPTY
+            fd.seek(file_offset)
+            k_len = struct.unpack('<B', fd.read(1))[0]
+            k = fd.read(k_len)
+            fd.seek(file_offset + self.max_key_len + 1)  # +1 for the encoding
+            v_len = struct.unpack('<B', fd.read(1))[0]
+            v = fd.read(v_len)
+            fd.seek(file_offset + self.max_key_len + self.max_value_len + 2)
+            return k, v
+
+    def _write_kv_pair(self, fd, key, value):
+        fd.write(struct.pack('<B', len(key)))
+        fd.write(key + b'\x00' * (self.max_key_len - len(key)))  # key padded with \x00's
+        fd.write(struct.pack('<B', len(value)))
+        fd.write(value + b'\x00' * (self.max_value_len - len(value)))  # same for value
+        fd.flush()
+
     def get(self, key: bytes):
         assert type(key) is bytes and 0 < len(key) <= self.max_key_len
 
@@ -83,16 +109,9 @@ class HybridLog(KVStore):
             _, v = self.memory[offset]
             return v
 
-        offset -= 1  # fix the offset for the disk
-        file_offset = offset * (self.max_key_len + self.max_value_len + 2)  # +2 for the encoding of the lengths of keys and values
+        file_offset = self.LA_to_file_offset(offset)
         with self.log_path.open('rb') as log_file:
-            log_file.seek(file_offset)
-            k_len = struct.unpack('<B', log_file.read(1))[0]
-            k = log_file.read(k_len)
-            assert k == key
-            log_file.seek(file_offset + self.max_key_len + 1)
-            v_len = struct.unpack('<B', log_file.read(1))[0]
-            v = log_file.read(v_len)
+            _, v = self._read_kv_pair(log_file, file_offset)
             return v
 
     def set(self, key: bytes, value: bytes = EMPTY):
@@ -122,10 +141,11 @@ class HybridLog(KVStore):
         with self.log_path.open('ab') as log_file:
             while self.head_offset < offset:
                 key, value = self.memory.pop()
-
-                log_file.write(struct.pack('<B', len(key)))
-                log_file.write(key + b'\x00' * (self.max_key_len - len(key)))  # key padded with \x00's
-                log_file.write(struct.pack('<B', len(value)))
-                log_file.write(value + b'\x00' * (self.max_value_len - len(value)))  # same for value
-
+                self._write_kv_pair(log_file, key, value)
                 self.head_offset += 1
+
+    def file_offset_to_LA(self, file_offset):
+        return (file_offset // (self.max_key_len + self.max_value_len + 2)) + 1
+
+    def LA_to_file_offset(self, la):
+        return (la - 1) * (self.max_key_len + self.max_value_len + 2)  # +2 for the encoding of the lengths of keys and values

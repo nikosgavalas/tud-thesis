@@ -26,7 +26,7 @@ def parse(fd, args):
     elif args.engine == 'hybridlog':
         db = HybridLog(args.d, args.max_key_len, args.max_val_len, args.memory, args.ro_lag, args.flush_interval)
     elif args.engine == 'appendlog':
-        db = AppendLog(args.d, args.runs_per_level, args.compaction_threshold)
+        db = AppendLog(args.d, args.runs_per_level, args.threshold)
  
     csv_reader = csv.reader(fd, delimiter=' ', quotechar='"')
     for row in csv_reader:
@@ -65,18 +65,18 @@ def main():
     lsm_parser = subparsers.add_parser('lsmtree')
     lsm_parser.add_argument('--runs-per-level', type=int, help='max runs per level', default=3)
     lsm_parser.add_argument('--density-factor', type=int, help='density factor', default=20)
-    lsm_parser.add_argument('--memory-limit', type=int, help='memtable bytes limit', default=1_000_000)
+    lsm_parser.add_argument('--memory-limit', type=int, help='memtable bytes limit', default=10**6)
 
     hybridlog_parser = subparsers.add_parser('hybridlog')
     hybridlog_parser.add_argument('--max-key-len', type=int, help='max key length', default=4)
     hybridlog_parser.add_argument('--max-val-len', type=int, help='max value length', default=4)
-    hybridlog_parser.add_argument('--memory', type=int, help='memory segment length in bytes', default=1_048_576)
-    hybridlog_parser.add_argument('--ro-lag', type=int, help='read-only lag interval in num. of records', default=1_024)
-    hybridlog_parser.add_argument('--flush-interval', type=int, help='flush interval in num. of records', default=4_096)
+    hybridlog_parser.add_argument('--memory', type=int, help='memory segment length in bytes', default=2**20)
+    hybridlog_parser.add_argument('--ro-lag', type=int, help='read-only lag interval in num. of records', default=2**10)
+    hybridlog_parser.add_argument('--flush-interval', type=int, help='flush interval in num. of records', default=(4 * 2**10))
 
     appendlog_parser = subparsers.add_parser('appendlog')
     appendlog_parser.add_argument('--runs-per-level', type=int, help='max runs per level', default=3)
-    appendlog_parser.add_argument('--threshold', type=int, help='threshold that triggers compaction in bytes', default=4_000_000)
+    appendlog_parser.add_argument('--threshold', type=int, help='threshold that triggers merging, in bytes', default=(4 * 10**6))
 
     args = parser.parse_args()
     if not args.engine:
