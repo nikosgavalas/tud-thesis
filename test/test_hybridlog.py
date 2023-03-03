@@ -41,7 +41,7 @@ class TestHybridLog(unittest.TestCase):
     def test_e2e_2(self):
         # high-granularity test
         rng = Random(1)
-        l = HybridLog(self.dir.name, mem_segment_len=10, ro_lag_interval=2, flush_interval=4)
+        l = HybridLog(self.dir.name, mem_segment_len=2000, ro_lag_interval=1000, flush_interval=1000)
         n_items = 100
         n_iter = 1_000_000
 

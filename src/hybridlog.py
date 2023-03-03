@@ -33,6 +33,7 @@ Note: for the compaction you don't actually need extra memory, you can just use 
 import struct
 
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
+from src.ringbuffer import RingBuffer
 
 
 class HybridLog(KVStore):
@@ -50,21 +51,19 @@ class HybridLog(KVStore):
 
         self.max_key_len = max_key_len
         self.max_value_len = max_value_len
-        self.mem_segment_len = mem_segment_len
         self.ro_lag_interval = ro_lag_interval
         self.flush_interval = flush_interval
 
         self.hash_index = {}  # TODO write this index the same way it's described in the paper (now using just a simple dict)
-        self.head_offset = 0
-        self.ro_offset = 0
-        self.tail_offset = 0
+
+        self.head_offset = 0  # LA > head_offset is in mem
+        self.ro_offset = 0    # in LA > ro_offset we have the mutable region
+        self.tail_offset = 0  # points to the tail of the log, the next free available slot in memory
 
         self.log_path = self.data_dir / 'log'
         self.log_file_idx = 0
 
-        self.mem_segment = [None] * self.mem_segment_len  # preallocate the circular buffer
-        self.mem_start_idx = 0
-        self.mem_end_idx = 0
+        self.memory = RingBuffer(mem_segment_len)
 
     def __del__(self):
         self.close()
@@ -80,10 +79,11 @@ class HybridLog(KVStore):
             return EMPTY
 
         offset = self.hash_index[key]
-        if offset >= self.head_offset:
-            _, v = self.mem_segment[offset % self.mem_segment_len]
+        if offset > self.head_offset:
+            _, v = self.memory[offset]
             return v
 
+        offset -= 1  # fix the offset for the disk
         file_offset = offset * (self.max_key_len + self.max_value_len + 2)  # +2 for the encoding of the lengths of keys and values
         with self.log_path.open('rb') as log_file:
             log_file.seek(file_offset)
@@ -98,19 +98,19 @@ class HybridLog(KVStore):
     def set(self, key: bytes, value: bytes = EMPTY):
         assert type(key) is bytes and type(value) is bytes and 0 < len(key) <= self.max_key_len and len(value) <= self.max_value_len
 
-        # here I am supposed to check the offsets, and apply copy-on-update if the key already exists before the ro_offset,
-        # but I won't do that as I'll be writing the key-value pair directly. There's no point in copying something that
-        # will be immediately updated to a new value.
+        if self.memory.is_full():
+            self.flush(self.ro_offset)
 
-        self.mem_start_idx = self.tail_offset % self.mem_segment_len
-        if self.mem_start_idx == self.mem_end_idx:  # if the buffer is full, flush
-            self.flush(self.ro_offset)  # TODO not sure about this part
+        if key in self.hash_index:
+            offset = self.hash_index[key]
+            if offset > self.ro_offset:
+                # update in-place
+                self.memory[offset] = (key, value)
+                return
 
+        self.tail_offset = self.memory.add((key, value))
         self.hash_index[key] = self.tail_offset
-
-        self.mem_segment[self.mem_start_idx] = (key, value)
-
-        self.tail_offset += 1
+        # no need to increment the tail offset as the ring buffer returns the new (incremented) address
 
         if self.tail_offset - self.ro_offset > self.ro_lag_interval:
             self.ro_offset += 1
@@ -121,7 +121,7 @@ class HybridLog(KVStore):
     def flush(self, offset: int):
         with self.log_path.open('ab') as log_file:
             while self.head_offset < offset:
-                key, value = self.mem_segment[self.head_offset % self.mem_segment_len]
+                key, value = self.memory.pop()
 
                 log_file.write(struct.pack('<B', len(key)))
                 log_file.write(key + b'\x00' * (self.max_key_len - len(key)))  # key padded with \x00's
@@ -129,5 +129,3 @@ class HybridLog(KVStore):
                 log_file.write(value + b'\x00' * (self.max_value_len - len(value)))  # same for value
 
                 self.head_offset += 1
-
-            self.mem_end_idx = self.head_offset

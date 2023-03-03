@@ -1,7 +1,11 @@
-
 class RingBuffer:
+    '''
+    __getitem__(), __setitem__() here are specific to my use case (to this
+    codebase) and would not be present in a generic ring buffer implementation
+    '''
     def __init__(self, capacity: int):
-        assert capacity > 0
+        if capacity <= 0:
+            raise ValueError('capacity has to be > 0')
         self.capacity = capacity
         self.buffer = [None] * capacity
         self.write_idx = 1
@@ -9,6 +13,16 @@ class RingBuffer:
 
     def __len__(self):
         return self.write_idx - self.read_idx - 1
+
+    def __getitem__(self, key):
+        if key >= self.write_idx or key <= self.read_idx:
+            raise IndexError('index out of bounds')
+        return self.buffer[key % self.capacity]
+
+    def __setitem__(self, key, value):
+        if key >= self.write_idx or key <= self.read_idx:
+            raise IndexError('index out of bounds')
+        self.buffer[key % self.capacity] = value
 
     def is_empty(self):
         return self.__len__() == 0
@@ -20,7 +34,9 @@ class RingBuffer:
         if self.is_full():
             raise BufferError('buffer full')
         self.buffer[self.write_idx % self.capacity] = element
+        ret = self.write_idx
         self.write_idx += 1
+        return ret
 
     def pop(self):
         if self.is_empty():
