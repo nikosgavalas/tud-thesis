@@ -34,9 +34,8 @@ Python 3.11, `pip install -r requirements.txt`
   - [ ] asyncio
 - [ ] HybridLog
   - [x] basis
-  - [ ] hash index
+  - [x] hash index
   - [x] logical addresses
-  - [ ] compaction of segments of the log
   - [ ] asyncio
 - [ ] AppendLog
   - [x] basis
