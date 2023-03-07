@@ -11,7 +11,7 @@ class AppendLog(KVStore):
         # of all the files not just those that have been compacted/merged.
         # this means that i have to update it **BEFORE** any new files are written. this is because the index
         # always points to the most recent record, which may be to a new log.
-        # this means that i have to check for unexisted files
+        # this means that i have to check for unexistent files
         # in the LSMTree implementation, i have idempotency (i can rebuild stuff based on previous files)
         # one more thing about the state i just realized: only runs in the first level need compaction.
         # the merged files in greater levels are already compacted in a sense
@@ -23,7 +23,7 @@ class AppendLog(KVStore):
         # TODO what do i do with the deletes?
 
         # actually I completely removed compaction. It adds a lot of complexity for no benefit, since
-        # all the benefit is actually done in the merging phase.
+        # all the potential benefit is actually reaped anyway in the merging phase.
         assert max_runs_per_level >= 1
         assert threshold > 0
 

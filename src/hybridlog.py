@@ -45,8 +45,6 @@ class HybridLog(KVStore):
         self.type = 'hybridlog'
         super().__init__(data_dir)
 
-        # TODO if there are files in the directory, rebuild the index from them (write compaction first)
-
         assert 0 < max_key_len <= MAX_KEY_LENGTH
         assert 0 < max_value_len <= MAX_VALUE_LENGTH
         assert ro_lag_interval > 0
@@ -58,14 +56,25 @@ class HybridLog(KVStore):
         self.ro_lag_interval = ro_lag_interval
         self.flush_interval = flush_interval
 
-        self.hash_index = {}  # TODO write this index the same way it's described in the paper (now using just a simple dict)
+        self.hash_index = {}
 
         self.head_offset = 0  # LA > head_offset is in mem
         self.ro_offset = 0    # in LA > ro_offset we have the mutable region
         self.tail_offset = 0  # points to the tail of the log, the next free available slot in memory
 
         self.log_path = self.data_dir / 'log'
-        self.log_file_idx = 0
+        if self.log_path.is_file():
+            with self.log_path.open('rb') as log_file:
+                offset = log_file.tell()
+                k, _ = self._read_kv_pair(log_file)
+                self.head_offset += 1
+                while k:
+                    self.hash_index[k] = self.file_offset_to_LA(offset)
+                    offset = log_file.tell()
+                    k, _ = self._read_kv_pair(log_file)
+                    self.head_offset += 1
+            self.ro_offset = self.head_offset
+            self.tail_offset = self.ro_offset
 
         self.memory = RingBuffer(mem_segment_len)
 
