@@ -19,6 +19,10 @@ Python 3.11, `pip install -r requirements.txt`
 
 `python -m unittest`
 
+#### Benchmarks:
+
+`cd benchmarks && python run.py`
+
 #### Roadmap:
 
 - [ ] LSMTree
@@ -43,3 +47,5 @@ Python 3.11, `pip install -r requirements.txt`
   - [x] merging multiple levels
   - [ ] asyncio
 - [ ] Benchmarks
+  - [x] distributions
+  - [ ] basic throughput
