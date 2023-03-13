@@ -57,6 +57,12 @@ class AppendLog(KVStore):
     def close(self):
         self.save_metadata()
 
+    def __getitem__(self, key):
+        return self.get(key)
+
+    def __setitem__(self, key, value):
+        return self.set(key, value)
+
     def get(self, key: bytes):
         assert type(key) is bytes and 0 < len(key) <= MAX_KEY_LENGTH
 

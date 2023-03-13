@@ -51,7 +51,12 @@ class KVStore():
         fd.write(value)
 
     # abstract methods
-    # TODO add __getitem__ and __setitem__ methods
+    def __getitem__(self, key):
+        raise NotImplementedError('')
+
+    def __setitem__(self, key, value):
+        raise NotImplementedError('')
+
     def get(self, key: bytes):
         raise NotImplementedError('')
 
