@@ -36,12 +36,13 @@ overhead in the address translations, plus requires extra bookkeeping (persisten
 import struct
 
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
+from src.hashindex import HashIndex
 from src.ringbuffer import RingBuffer
 
 
 class HybridLog(KVStore):
     def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=2**20,
-            ro_lag_interval=2**10, flush_interval=(4 * 2**10)):
+            ro_lag_interval=2**10, flush_interval=(4 * 2**10), hash_index='native'):
         self.type = 'hybridlog'
         super().__init__(data_dir)
 
@@ -50,13 +51,17 @@ class HybridLog(KVStore):
         assert ro_lag_interval > 0
         assert flush_interval > 0
         assert mem_segment_len >= ro_lag_interval + flush_interval
+        assert hash_index in ['dict', 'native'], 'hash_index parameter must be either "dict" or "native"'
 
         self.max_key_len = max_key_len
         self.max_value_len = max_value_len
         self.ro_lag_interval = ro_lag_interval
         self.flush_interval = flush_interval
 
-        self.hash_index = {}
+        if hash_index == 'native':
+            self.hash_index = HashIndex(n_buckets_power=4, key_len_bits=self.max_key_len*8, value_len_bits=self.max_value_len*8)
+        else:
+            self.hash_index = {}
 
         self.head_offset = 0  # LA > head_offset is in mem
         self.ro_offset = 0    # in LA > ro_offset we have the mutable region

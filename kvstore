@@ -73,6 +73,7 @@ def main():
     hybridlog_parser.add_argument('--memory', type=int, help='memory segment length in bytes', default=2**20)
     hybridlog_parser.add_argument('--ro-lag', type=int, help='read-only lag interval in num. of records', default=2**10)
     hybridlog_parser.add_argument('--flush-interval', type=int, help='flush interval in num. of records', default=(4 * 2**10))
+    hybridlog_parser.add_argument('--hash-index', type=str, help='type of the hash index, native or dict', default='dict')
 
     appendlog_parser = subparsers.add_parser('appendlog')
     appendlog_parser.add_argument('--runs-per-level', type=int, help='max runs per level', default=3)

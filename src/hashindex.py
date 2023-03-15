@@ -10,8 +10,8 @@ from mmh3 import hash  # 32-bit signed int
 
 
 class _HashIndex:
-    def __init__(self, n_buckets_power=3, key_len_bits=32, value_len_bits=32):
-        assert n_buckets_power >= 3
+    def __init__(self, n_buckets_power=4, key_len_bits=32, value_len_bits=32):
+        assert n_buckets_power >= 4
         assert key_len_bits > 0
         assert value_len_bits > 0
 
@@ -108,7 +108,7 @@ class _HashIndex:
 
 
 class HashIndex:
-    def __init__(self, n_buckets_power=3, key_len_bits=32, value_len_bits=32):
+    def __init__(self, n_buckets_power=4, key_len_bits=32, value_len_bits=32):
         self._hash_index = _HashIndex(n_buckets_power=n_buckets_power, key_len_bits=key_len_bits, value_len_bits=value_len_bits)
 
         self.n_buckets_power = n_buckets_power
@@ -137,8 +137,6 @@ class HashIndex:
 
         for bucket in self._hash_index.buckets:
             for entry in bucket:
-                # if entry == 0:
-                #     continue
                 key = entry & self._hash_index.key_mask_lower
                 value = entry >> self._hash_index.key_len_bits
                 if value == 0:
