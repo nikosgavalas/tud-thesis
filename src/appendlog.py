@@ -121,6 +121,7 @@ class AppendLog(KVStore):
             self.merge(next_level)
 
 
+# TODO change to namedtuple? maybe it's faster
 class Record():
     def __init__(self, level: int, run: int, offset: int):
         self.level = level

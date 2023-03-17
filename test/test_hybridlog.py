@@ -40,7 +40,7 @@ class TestHybridLog(unittest.TestCase):
 
     def test_e2e_2(self):
         rng = Random(1)
-        l = HybridLog(self.dir.name, mem_segment_len=2000, ro_lag_interval=1000, flush_interval=1000)
+        l = HybridLog(self.dir.name, mem_segment_len=2000, ro_lag_interval=1000, flush_interval=1000, compaction_interval=0)
         n_items = 100
         n_iter = 1_000_000
 
@@ -98,6 +98,32 @@ class TestHybridLog(unittest.TestCase):
 
         l.close()
         l = HybridLog(self.dir.name)
+
+        for k, v in dict.items():
+            self.assertEqual(v, l.get(k))
+
+    def test_compaction(self):
+        rng = Random(1)
+        l = HybridLog(self.dir.name, mem_segment_len=300, ro_lag_interval=100, flush_interval=100, compaction_interval=8)
+        n_items = 1000
+        n_iter = 10000
+
+        dict = {}
+        keys = [rng.randbytes(rng.randint(1, 4)) for _ in range(n_items)]
+        values = [rng.randbytes(rng.randint(0, 4)) for _ in range(n_items)]
+
+        for _ in range(n_iter):
+            rand_idx = rng.randint(0, n_items - 1)
+            rand_key = keys[rand_idx]
+            rand_value = values[rand_idx]
+
+            if not rand_value:
+                if rand_key in dict:
+                    del dict[rand_key]
+            else:
+                dict[rand_key] = rand_value
+
+            l.set(rand_key, rand_value)
 
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))

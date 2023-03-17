@@ -40,7 +40,7 @@ Python 3.11, `pip install -r requirements.txt`
   - [x] basis
   - [x] hash index
   - [x] logical addresses
-  - [ ] compaction
+  - [x] compaction
   - [ ] asyncio
 - [ ] AppendLog
   - [x] basis
