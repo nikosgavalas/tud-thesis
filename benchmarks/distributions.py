@@ -7,6 +7,7 @@ class Zipfian:
     """
 
     def __init__(self, items: int = None, mn: int = None, mx: int = None, zipf_const: float = 0.99, seed: int = None):
+        self.name = 'Zipfian'
         if seed is not None:
             self.__rng = random.Random(seed)
         else:
@@ -74,6 +75,7 @@ class Zipfian:
 
 class Uniform:
     def __init__(self, items: int, seed: int = None):
+        self.name = 'Uniform'
         if seed is not None:
             self.rng = random.Random(seed)
         else:
@@ -91,6 +93,7 @@ class HotSet(Uniform):
         # at every interval, a range is selected (round-robin). Items from this range are (uniformly withing the range)
         # selected with 90% probability, and from the other ranges with 10% probability.
         super().__init__(items, seed)
+        self.name = 'HotSet'
         assert items >= n_sets
         self.n_sets = n_sets
         self.rotation_interval = rotation_interval
