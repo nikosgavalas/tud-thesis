@@ -59,6 +59,7 @@ Python 3.11, `pip install -r requirements.txt`
 
 #### Some basic initial measurements
 
+```
 number of distinct choices for keys and values: 100
 distribution:   Zipfian
 1.0e+06 writes  LSMTree:        0.770s
@@ -127,3 +128,4 @@ distribution:   Uniform
 1.0e+06 reads   HybridLog:      5.237s
 1.0e+06 writes  AppendLog:      11.925s
 1.0e+06 reads   AppendLog:      8.925s
+```
