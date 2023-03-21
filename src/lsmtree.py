@@ -21,6 +21,7 @@ class LSMTree(KVStore):
     # NOTE the fence pointers can be used to organize data into compressible blocks
     def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000):
         self.type = 'lsmtree'
+        self.name = 'LSMTree'
         super().__init__(data_dir)
 
         if 'runs_per_level' not in self.metadata:
@@ -63,9 +64,6 @@ class LSMTree(KVStore):
 
                 self.levels[level_idx].append(Run(filter, pointers))
     
-    def __del__(self):
-        self.close()
-
     def close(self):
         # close the wal file (if not closed, it may not flush)
         self.wal_file.close()

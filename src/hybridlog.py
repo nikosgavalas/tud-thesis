@@ -47,6 +47,7 @@ class HybridLog(KVStore):
     def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=2**20,
             ro_lag_interval=2**10, flush_interval=(4 * 2**10), hash_index='dict', compaction_interval=0):
         self.type = 'hybridlog'
+        self.name = 'HybridLog'
         super().__init__(data_dir)
 
         assert 0 < max_key_len <= MAX_KEY_LENGTH
@@ -90,9 +91,6 @@ class HybridLog(KVStore):
             self.tail_offset = self.ro_offset
 
         self.memory = RingBuffer(mem_segment_len)
-
-    def __del__(self):
-        self.close()
 
     def close(self):
         self.flush(self.tail_offset)  # flush everything

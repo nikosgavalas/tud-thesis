@@ -4,6 +4,7 @@ from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 class AppendLog(KVStore):
     def __init__(self, data_dir='./data', max_runs_per_level=3, threshold=4_000_000):
         self.type = 'appendlog'
+        self.name = 'AppendLog'
         super().__init__(data_dir)
 
         # about state:
@@ -50,9 +51,6 @@ class AppendLog(KVStore):
                         self.hash_index[k] = Record(level_idx, run_idx, offset)
                         offset = log_file.tell()
                         k, _ = self._read_kv_pair(log_file)
-
-    def __del__(self):
-        self.close()
 
     def close(self):
         self.save_metadata()
