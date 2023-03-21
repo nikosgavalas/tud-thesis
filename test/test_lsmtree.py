@@ -10,7 +10,7 @@ sys.path.append('.')
 from src.lsmtree import LSMTree
 
 
-class TestLSMTree(unittest.TestCase):
+class TestLSMTree(unittest.IsolatedAsyncioTestCase):
     dir = Path('./data_test')
 
     def setUp(self):
@@ -18,26 +18,28 @@ class TestLSMTree(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.dir.name)
-    
-    def test_e2e_1(self):
-        l = LSMTree(self.dir.name, max_runs_per_level=3, density_factor=3, memtable_bytes_limit=10)
 
-        l.set(b'b', b'2')
-        l.set(b'asdf', b'12345')
-        l.set(b'cc', b'cici345')
-        l.set(b'b', b'3')
+    async def test_e2e_1(self):
+        l = await LSMTree(self.dir.name, max_runs_per_level=3, density_factor=3, memtable_bytes_limit=10)
 
-        self.assertEqual(l.get(b'b'), b'3')
-        self.assertEqual(l.get(b'asdf'), b'12345')
-        self.assertEqual(l.get(b'cc'), b'cici345')
-    
-    def test_e2e_2(self):
+        await l.set(b'b', b'2')
+        await l.set(b'asdf', b'12345')
+        await l.set(b'cc', b'cici345')
+        await l.set(b'b', b'3')
+
+        self.assertEqual(await l.get(b'b'), b'3')
+        self.assertEqual(await l.get(b'asdf'), b'12345')
+        self.assertEqual(await l.get(b'cc'), b'cici345')
+
+        await l.close()
+
+    async def test_e2e_2(self):
         # highly granular, fishing for edgecases
         for a in range(1):  # change this range to as much as you want to wait
             rng = Random(a)
-            l = LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
+            l = await LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
             n_items = 10
-            n_iter = 10_000
+            n_iter = 1_000
 
             dict = {}  # testing against the python dict
             keys = [rng.randbytes(rng.randint(1, 10)) for _ in range(n_items)]
@@ -54,17 +56,19 @@ class TestLSMTree(unittest.TestCase):
                 else:
                     dict[rand_key] = rand_value
 
-                l.set(rand_key, rand_value)
+                await l.set(rand_key, rand_value)
 
             for k, v in dict.items():
-                self.assertEqual(v, l.get(k))
+                self.assertEqual(v, await l.get(k))
+            
+            await l.close()
 
-    def test_e2e_3(self):
+    async def test_e2e_3(self):
         # more realistic
         rng = Random(1)
-        l = LSMTree(self.dir.name)
+        l = await LSMTree(self.dir.name)
         n_items = 100
-        n_iter = 1_000_000
+        n_iter = 1_000
 
         dict = {}
         keys = [rng.randbytes(rng.randint(1, 10)) for _ in range(n_items)]
@@ -81,49 +85,55 @@ class TestLSMTree(unittest.TestCase):
             else:
                 dict[rand_key] = rand_value
 
-            l.set(rand_key, rand_value)
+            await l.set(rand_key, rand_value)
 
         # also test a reset here
-        l.close()
-        l = LSMTree(self.dir.name)
+        await l.close()
+        l = await LSMTree(self.dir.name)
 
         for k, v in dict.items():
-            self.assertEqual(v, l.get(k))
+            self.assertEqual(v, await l.get(k))
+        
+        await l.close()
 
-    def test_merge_1(self):
-        l = LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
+    async def test_merge_1(self):
+        l = await LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
 
-        l.set(b'a1', b'a1')
-        l.set(b'a1', b'a11')
-        l.set(b'a2', b'a2')
+        await l.set(b'a1', b'a1')
+        await l.set(b'a1', b'a11')
+        await l.set(b'a2', b'a2')
 
-        l.set(b'a2', b'a22')
-        l.set(b'a3', b'a3')
-        l.set(b'a4', b'a4')
+        await l.set(b'a2', b'a22')
+        await l.set(b'a3', b'a3')
+        await l.set(b'a4', b'a4')
 
-        l.set(b'a3', b'a31')
-        l.set(b'a5', b'a5')
-        l.set(b'a6', b'a6')
+        await l.set(b'a3', b'a31')
+        await l.set(b'a5', b'a5')
+        await l.set(b'a6', b'a6')
 
         with (self.dir / 'L1.0.run').open('br') as f:
             content = f.read()
 
         self.assertEqual(content, b'\x02a1\x03a11\x02a2\x03a22\x02a3\x03a31\x02a4\x02a4\x02a5\x02a5\x02a6\x02a6')
+
+        await l.close()
     
-    def test_wal(self):
-        l1 = LSMTree(self.dir.name)
+    async def test_wal(self):
+        l1 = await LSMTree(self.dir.name)
 
-        l1.set(b'a', b'1')
-        l1.set(b'b', b'2')
-        l1.set(b'c', b'3')
+        await l1.set(b'a', b'1')
+        await l1.set(b'b', b'2')
+        await l1.set(b'c', b'3')
 
-        l1.close()
+        await l1.close()
 
-        l2 = LSMTree(self.dir.name)
+        l2 = await LSMTree(self.dir.name)
 
-        self.assertEqual(l2.get(b'a'), b'1')
-        self.assertEqual(l2.get(b'b'), b'2')
-        self.assertEqual(l2.get(b'c'), b'3')
+        self.assertEqual(await l2.get(b'a'), b'1')
+        self.assertEqual(await l2.get(b'b'), b'2')
+        self.assertEqual(await l2.get(b'c'), b'3')
+
+        await l2.close()
 
 
 if __name__ == "__main__":

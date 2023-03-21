@@ -3,6 +3,7 @@ LSM Tree with size-tiered compaction (write-optimized)
 TODO: consider using mmap for the files
 '''
 
+import aiofiles
 from sortedcontainers import SortedDict
 
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
@@ -19,9 +20,9 @@ class Run:
 
 class LSMTree(KVStore):
     # NOTE the fence pointers can be used to organize data into compressible blocks
-    def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000):
+    async def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000):
         self.type = 'lsmtree'
-        super().__init__(data_dir)
+        await super().__init__(data_dir)
 
         if 'runs_per_level' not in self.metadata:
             self.metadata['runs_per_level'] = []
@@ -39,12 +40,12 @@ class LSMTree(KVStore):
 
         self.wal_path = self.data_dir / 'wal'
         if self.wal_path.is_file():
-            with self.wal_path.open('rb') as wal_file:
-                k, v = self._read_kv_pair(wal_file)
+            async with aiofiles.open(self.wal_path, 'rb') as wal_file:
+                k, v = await self._read_kv_pair(wal_file)
                 while k:
                     self.memtable[k] = v  # write the value to the memtable directly, no checks for amount of bytes etc.
-                    k, v = self._read_kv_pair(wal_file)
-        self.wal_file = self.wal_path.open('ab')
+                    k, v = await self._read_kv_pair(wal_file)
+        self.wal_file = await aiofiles.open(self.wal_path, 'ab')
 
         self.levels: list[list[Run]] = []
 
@@ -53,31 +54,28 @@ class LSMTree(KVStore):
             self.levels.append([])
         for level_idx, n_runs in enumerate(self.metadata['runs_per_level']):
             for r in range(n_runs):
-                with (self.data_dir / f'L{level_idx}.{r}.pointers').open('r') as pointers_file:
-                    data = pointers_file.read()
+                async with aiofiles.open(self.data_dir / f'L{level_idx}.{r}.pointers', 'r') as pointers_file:
+                    data = await pointers_file.read()
                 pointers = FencePointers(from_str=data)
 
-                with (self.data_dir / f'L{level_idx}.{r}.filter').open('r') as filter_file:
-                    data = filter_file.read()
+                async with aiofiles.open(self.data_dir / f'L{level_idx}.{r}.filter', 'r') as filter_file:
+                    data = await filter_file.read()
                 filter = BloomFilter(from_str=data)
 
                 self.levels[level_idx].append(Run(filter, pointers))
     
-    def __del__(self):
-        self.close()
-
-    def close(self):
+    async def close(self):
         # close the wal file (if not closed, it may not flush)
-        self.wal_file.close()
-        self.save_metadata()
+        await self.wal_file.close()
+        await self.save_metadata()
 
-    def __getitem__(self, key):
-        return self.get(key)
+    async def __getitem__(self, key):
+        return await self.get(key)
 
-    def __setitem__(self, key, value):
-        return self.set(key, value)
+    async def __setitem__(self, key, value):
+        return await self.set(key, value)
 
-    def get(self, key: bytes):
+    async def get(self, key: bytes):
         assert type(key) is bytes and len(key) < MAX_KEY_LENGTH
 
         if key in self.memtable:
@@ -90,16 +88,16 @@ class LSMTree(KVStore):
                     if idx < 0:
                         idx = 0
                     _, offset = run.pointers.peekitem(idx)
-                    with (self.data_dir / f'L{level_idx}.{i}.run').open('rb') as run_file:
-                        run_file.seek(offset)
+                    async with aiofiles.open(self.data_dir / f'L{level_idx}.{i}.run', 'rb') as run_file:
+                        await run_file.seek(offset)
                         for i in range(run.pointers.density_factor):
-                            read_key, read_value = self._read_kv_pair(run_file)
+                            read_key, read_value = await self._read_kv_pair(run_file)
                             if read_key == key:
                                 return read_value
 
         return EMPTY
 
-    def set(self, key: bytes, value: bytes = EMPTY):
+    async def set(self, key: bytes, value: bytes = EMPTY):
         assert type(key) is bytes and type(value) is bytes and 0 < len(key) < MAX_KEY_LENGTH and len(value) < MAX_VALUE_LENGTH
 
         self.memtable[key] = value  # NOTE maybe i should write after the flush? cause this way the limit is not a hard limit, it may be passed by up to 255 bytes
@@ -108,16 +106,16 @@ class LSMTree(KVStore):
         if new_bytes_count > self.memtable_bytes_limit:
             # normally I would allocate a new memtable here so that writes can continue there
             # and then give the flushing of the old memtable to a background thread
-            self.flush_memtable()
+            await self.flush_memtable()
 
             if len(self.levels[0]) > self.max_runs_per_level:  # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the first level
-                self.merge(0)
+                await self.merge(0)
         else:
             # write to wal
-            self._write_kv_pair(self.wal_file, key, value)
+            await self._write_kv_pair(self.wal_file, key, value)
             self.memtable_bytes_count = new_bytes_count
 
-    def merge(self, level_idx: int):
+    async def merge(self, level_idx: int):
         level = self.levels[level_idx]
         if level_idx + 1 >= len(self.levels):
             self.levels.append([])
@@ -128,14 +126,14 @@ class LSMTree(KVStore):
 
         fds, keys, values, is_empty = [], [], [], []
         for i, _ in enumerate(level):
-            fd = (self.data_dir / f'L{level_idx}.{i}.run').open('rb')
+            fd = await aiofiles.open(self.data_dir / f'L{level_idx}.{i}.run', 'rb')
             fds.append(fd)
-            k, v = self._read_kv_pair(fd)
+            k, v = await self._read_kv_pair(fd)
             keys.append(k)
             values.append(v)
             is_empty.append(True if not k else False)
         
-        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run' ).open('wb') as run_file:
+        async with aiofiles.open(self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run', 'wb') as run_file:
             while not all(is_empty):
                 argmin_key = len(level) - 1
                 # correctly initialize the argmin_key (cause empty key b'' would make it instantly the argmin_key in the next for loop which we don't want)
@@ -148,32 +146,32 @@ class LSMTree(KVStore):
                         argmin_key = i
 
                 if values[argmin_key]:  # assumption: empty value == deleted item, so if empty I am writing nothing
-                    fence_pointers.add(keys[argmin_key], run_file.tell())
-                    self._write_kv_pair(run_file, keys[argmin_key], values[argmin_key])
+                    fence_pointers.add(keys[argmin_key], await run_file.tell())
+                    await self._write_kv_pair(run_file, keys[argmin_key], values[argmin_key])
                     filter.add(keys[argmin_key])
 
                 written_key = keys[argmin_key]
 
                 # read next kv pair 
-                keys[argmin_key], values[argmin_key] = self._read_kv_pair(fds[argmin_key])
+                keys[argmin_key], values[argmin_key] = await self._read_kv_pair(fds[argmin_key])
                 if not keys[argmin_key]:
                     is_empty[argmin_key] = True
 
                 # skip duplicates
                 for i in reversed(range(argmin_key + 1)): # + 1 cause inclusive range
                     while not is_empty[i] and written_key == keys[i]:  # if it's the same key, read one more pair to skip it
-                        keys[i], values[i] = self._read_kv_pair(fds[i])
+                        keys[i], values[i] = await self._read_kv_pair(fds[i])
                         if not keys[i]:
                             is_empty[i] = True
 
         for fd in fds:
-            fd.close()
+            await fd.close()
 
-        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.pointers').open('w') as pointers_file:
-            pointers_file.write(fence_pointers.serialize())
+        async with aiofiles.open(self.data_dir / f'L{level_idx + 1}.{len(next_level)}.pointers', 'w') as pointers_file:
+            await pointers_file.write(fence_pointers.serialize())
 
-        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.filter').open('w') as filter_file:
-            filter_file.write(filter.serialize())
+        async with aiofiles.open(self.data_dir / f'L{level_idx + 1}.{len(next_level)}.filter', 'w') as filter_file:
+            await filter_file.write(filter.serialize())
 
         # remove the files after successfully merging.
         for i, _ in enumerate(level):
@@ -189,13 +187,13 @@ class LSMTree(KVStore):
 
         # update metadata
         self.metadata['runs_per_level'] = [len(l) for l in self.levels]
-        self.save_metadata()
+        await self.save_metadata()
 
         # cascade the merging recursively
         if len(next_level) > self.max_runs_per_level:
-            self.merge(level_idx + 1)
+            await self.merge(level_idx + 1)
 
-    def flush_memtable(self):
+    async def flush_memtable(self):
         fence_pointers = FencePointers(self.density_factor)
         filter = BloomFilter(len(self.memtable))
 
@@ -205,26 +203,26 @@ class LSMTree(KVStore):
         flush_level = 0  # always flush at first level
         n_runs = len(self.levels[0])
 
-        with (self.data_dir / f'L{flush_level}.{n_runs}.run').open('wb') as run_file:
+        async with aiofiles.open(self.data_dir / f'L{flush_level}.{n_runs}.run', 'wb') as run_file:
             while self.memtable:
                 k, v = self.memtable.popitem(0)
-                fence_pointers.add(k, run_file.tell())
-                self._write_kv_pair(run_file, k, v)
+                fence_pointers.add(k, await run_file.tell())
+                await self._write_kv_pair(run_file, k, v)
                 filter.add(k)
  
         self.memtable_bytes_count = 0
 
         self.levels[flush_level].append(Run(filter, fence_pointers))
 
-        with (self.data_dir / f'L{flush_level}.{n_runs}.pointers').open('w') as pointers_file:
-            pointers_file.write(fence_pointers.serialize())
+        async with aiofiles.open(self.data_dir / f'L{flush_level}.{n_runs}.pointers', 'w') as pointers_file:
+            await pointers_file.write(fence_pointers.serialize())
 
-        with (self.data_dir / f'L{flush_level}.{n_runs}.filter').open('w') as filter_file:
-            filter_file.write(filter.serialize())
+        async with aiofiles.open(self.data_dir / f'L{flush_level}.{n_runs}.filter', 'w') as filter_file:
+            await filter_file.write(filter.serialize())
 
         self.metadata['runs_per_level'] = [len(l) for l in self.levels]
-        self.save_metadata()
+        await self.save_metadata()
 
         # reset WAL
-        self.wal_file.close()
-        self.wal_file = self.wal_path.open('wb')
+        await self.wal_file.close()
+        self.wal_file = await aiofiles.open(self.wal_path, 'wb')

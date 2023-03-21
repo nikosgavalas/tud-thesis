@@ -35,18 +35,18 @@ Python 3.11, `pip install -r requirements.txt`
     - [x] bloom filters persistence
   - [x] merging multiple levels
   - [x] WAL
-  - [ ] asyncio
+  - [x] asyncio
 - [ ] HybridLog
   - [x] basis
   - [x] hash index
   - [x] logical addresses
   - [x] compaction
-  - [ ] asyncio
+  - [x] asyncio
 - [ ] AppendLog
   - [x] basis
   - [x] compaction
   - [x] merging multiple levels
-  - [ ] asyncio
+  - [x] asyncio
 - [ ] Benchmarks
   - [x] distributions
   - [ ] basic throughput

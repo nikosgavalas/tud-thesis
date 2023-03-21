@@ -1,10 +1,12 @@
+import aiofiles
+
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 
 
 class AppendLog(KVStore):
-    def __init__(self, data_dir='./data', max_runs_per_level=3, threshold=4_000_000):
+    async def __init__(self, data_dir='./data', max_runs_per_level=3, threshold=4_000_000):
         self.type = 'appendlog'
-        super().__init__(data_dir)
+        await super().__init__(data_dir)
 
         # about state:
         # the state here, runs_per_level, contrary to the LSMTree implementation, keeps track
@@ -43,27 +45,24 @@ class AppendLog(KVStore):
         for level_idx, n_runs in enumerate(self.levels):
             for run_idx in range(n_runs):
                 log_path = self.data_dir / f'L{level_idx}.{run_idx}.run'
-                with log_path.open('rb') as log_file:
-                    offset = log_file.tell()
-                    k, _ = self._read_kv_pair(log_file)
+                async with aiofiles.open(log_path, 'rb') as log_file:
+                    offset = await log_file.tell()
+                    k, _ = await self._read_kv_pair(log_file)
                     while k:
                         self.hash_index[k] = Record(level_idx, run_idx, offset)
-                        offset = log_file.tell()
-                        k, _ = self._read_kv_pair(log_file)
+                        offset = await log_file.tell()
+                        k, _ = await self._read_kv_pair(log_file)
 
-    def __del__(self):
-        self.close()
+    async def close(self):
+        await self.save_metadata()
 
-    def close(self):
-        self.save_metadata()
+    async def __getitem__(self, key):
+        return await self.get(key)
 
-    def __getitem__(self, key):
-        return self.get(key)
+    async def __setitem__(self, key, value):
+        return await self.set(key, value)
 
-    def __setitem__(self, key, value):
-        return self.set(key, value)
-
-    def get(self, key: bytes):
+    async def get(self, key: bytes):
         assert type(key) is bytes and 0 < len(key) <= MAX_KEY_LENGTH
 
         if key not in self.hash_index:
@@ -71,20 +70,20 @@ class AppendLog(KVStore):
 
         record = self.hash_index[key]
 
-        with (self.data_dir / str(record)).open('rb') as log_file:
-            log_file.seek(record.offset)
-            k, v = self._read_kv_pair(log_file)
+        async with aiofiles.open(self.data_dir / str(record), 'rb') as log_file:
+            await log_file.seek(record.offset)
+            k, v = await self._read_kv_pair(log_file)
             assert k == key
             return v
 
-    def set(self, key: bytes, value: bytes = EMPTY):
+    async def set(self, key: bytes, value: bytes = EMPTY):
         assert type(key) is bytes and type(value) is bytes and 0 < len(key) <= MAX_KEY_LENGTH and len(value) <= MAX_VALUE_LENGTH
 
         # always write the latest log of the first level
         log_path = self.data_dir / f'L{0}.{self.levels[0]}.run'
-        with log_path.open('ab') as log_file:  # TODO consider keeping this file open all the time? will this make things considerably faster?
-            offset = log_file.tell()
-            self._write_kv_pair(log_file, key, value)
+        async with aiofiles.open(log_path, 'ab') as log_file:  # TODO consider keeping this file open all the time? will this make things considerably faster?
+            offset = await log_file.tell()
+            await self._write_kv_pair(log_file, key, value)
             self.hash_index[key] = Record(0, self.levels[0], offset)
             self.counter += len(key) + len(value)
 
@@ -93,32 +92,32 @@ class AppendLog(KVStore):
             self.levels[0] += 1
 
         if self.levels[0] > self.max_runs_per_level:
-            self.merge(0)
+            await self.merge(0)
 
-    def merge(self, level: int):
+    async def merge(self, level: int):
         next_level = level + 1
         if level + 1 >= len(self.levels):
             self.levels.append(0)
         next_run = self.levels[level + 1]
 
         for run_idx in range(self.levels[level]):
-            with (self.data_dir / f'L{level}.{run_idx}.run').open('rb') as src_file, (self.data_dir / f'L{next_level}.{next_run}.run').open('ab') as dst_file:
-                src_offset = src_file.tell()
-                k, v = self._read_kv_pair(src_file)
+            async with aiofiles.open(self.data_dir / f'L{level}.{run_idx}.run', 'rb') as src_file, aiofiles.open(self.data_dir / f'L{next_level}.{next_run}.run', 'ab') as dst_file:
+                src_offset = await src_file.tell()
+                k, v = await self._read_kv_pair(src_file)
                 while k:
                     if k in self.hash_index:
                         if self.hash_index[k] == Record(level, run_idx, src_offset):
-                            dst_offset = dst_file.tell()
-                            self._write_kv_pair(dst_file, k, v)
+                            dst_offset = await dst_file.tell()
+                            await self._write_kv_pair(dst_file, k, v)
                             self.hash_index[k] = Record(next_level, next_run, dst_offset)
-                    src_offset = src_file.tell()
-                    k, v = self._read_kv_pair(src_file)
+                    src_offset = await src_file.tell()
+                    k, v = await self._read_kv_pair(src_file)
 
         # bump the runs counter
         self.levels[next_level] += 1
         # merge recursively
         if self.levels[next_level] > self.max_runs_per_level:
-            self.merge(next_level)
+            await self.merge(next_level)
 
 
 # TODO change to namedtuple? maybe it's faster

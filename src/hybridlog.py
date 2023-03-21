@@ -38,16 +38,18 @@ removed from the db. well, TODO.
 
 import struct
 
+import aiofiles
+
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 from src.hashindex import HashIndex
 from src.ringbuffer import RingBuffer
 
 
 class HybridLog(KVStore):
-    def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=2**20,
+    async def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=2**20,
             ro_lag_interval=2**10, flush_interval=(4 * 2**10), hash_index='dict', compaction_interval=0):
         self.type = 'hybridlog'
-        super().__init__(data_dir)
+        await super().__init__(data_dir)
 
         assert 0 < max_key_len <= MAX_KEY_LENGTH
         assert 0 < max_value_len <= MAX_VALUE_LENGTH
@@ -77,56 +79,53 @@ class HybridLog(KVStore):
 
         self.log_path = self.data_dir / 'log'
         if self.log_path.is_file():
-            with self.log_path.open('rb') as log_file:
-                offset = log_file.tell()
-                k, _ = self._read_kv_pair(log_file)
+            async with aiofiles.open(self.log_path, 'rb') as log_file:
+                offset = await log_file.tell()
+                k, _ = await self._read_kv_pair(log_file)
                 self.head_offset += 1
                 while k:
                     self.hash_index[k] = self.file_offset_to_LA(offset)
-                    offset = log_file.tell()
-                    k, _ = self._read_kv_pair(log_file)
+                    offset = await log_file.tell()
+                    k, _ = await self._read_kv_pair(log_file)
                     self.head_offset += 1
             self.ro_offset = self.head_offset
             self.tail_offset = self.ro_offset
 
         self.memory = RingBuffer(mem_segment_len)
 
-    def __del__(self):
-        self.close()
+    async def close(self):
+        await self.flush(self.tail_offset)  # flush everything
+        await self.save_metadata()
 
-    def close(self):
-        self.flush(self.tail_offset)  # flush everything
-        self.save_metadata()
-
-    def _read_kv_pair(self, fd, file_offset=None):
+    async def _read_kv_pair(self, fd, file_offset=None):
             if not file_offset:
-                file_offset = fd.tell()
-            fd.seek(file_offset)
-            first_byte = fd.read(1)
+                file_offset = await fd.tell()
+            await fd.seek(file_offset)
+            first_byte = await fd.read(1)
             if not first_byte:
                 return EMPTY, EMPTY
             k_len = struct.unpack('<B', first_byte)[0]
-            k = fd.read(k_len)
-            fd.seek(file_offset + self.max_key_len + 1)  # +1 for the encoding
-            v_len = struct.unpack('<B', fd.read(1))[0]
-            v = fd.read(v_len)
-            fd.seek(file_offset + self.max_key_len + self.max_value_len + 2) # +2 for encoding
+            k = await fd.read(k_len)
+            await fd.seek(file_offset + self.max_key_len + 1)  # +1 for the encoding
+            v_len = struct.unpack('<B', await fd.read(1))[0]
+            v = await fd.read(v_len)
+            await fd.seek(file_offset + self.max_key_len + self.max_value_len + 2) # +2 for encoding
             return k, v
 
-    def _write_kv_pair(self, fd, key, value):
-        fd.write(struct.pack('<B', len(key)))
-        fd.write(key + b'\x00' * (self.max_key_len - len(key)))  # key padded with \x00's
-        fd.write(struct.pack('<B', len(value)))
-        fd.write(value + b'\x00' * (self.max_value_len - len(value)))  # same for value
-        fd.flush()
+    async def _write_kv_pair(self, fd, key, value):
+        await fd.write(struct.pack('<B', len(key)))
+        await fd.write(key + b'\x00' * (self.max_key_len - len(key)))  # key padded with \x00's
+        await fd.write(struct.pack('<B', len(value)))
+        await fd.write(value + b'\x00' * (self.max_value_len - len(value)))  # same for value
+        await fd.flush()
 
-    def __getitem__(self, key):
-        return self.get(key)
+    async def __getitem__(self, key):
+        return await self.get(key)
 
-    def __setitem__(self, key, value):
-        return self.set(key, value)
+    async def __setitem__(self, key, value):
+        return await self.set(key, value)
 
-    def get(self, key: bytes):
+    async def get(self, key: bytes):
         assert type(key) is bytes and 0 < len(key) <= self.max_key_len
 
         if key not in self.hash_index:
@@ -138,15 +137,15 @@ class HybridLog(KVStore):
             return v
 
         file_offset = self.LA_to_file_offset(offset)
-        with self.log_path.open('rb') as log_file:
-            _, v = self._read_kv_pair(log_file, file_offset)
+        async with aiofiles.open(self.log_path, 'rb') as log_file:
+            _, v = await self._read_kv_pair(log_file, file_offset)
             return v
 
-    def set(self, key: bytes, value: bytes = EMPTY):
+    async def set(self, key: bytes, value: bytes = EMPTY):
         assert type(key) is bytes and type(value) is bytes and 0 < len(key) <= self.max_key_len and len(value) <= self.max_value_len
 
         if self.memory.is_full():
-            self.flush(self.ro_offset)
+            await self.flush(self.ro_offset)
 
         if key in self.hash_index:
             offset = self.hash_index[key]
@@ -163,39 +162,39 @@ class HybridLog(KVStore):
             self.ro_offset += 1
 
         if self.ro_offset - self.head_offset > self.flush_interval:
-            self.flush(self.ro_offset)
+            await self.flush(self.ro_offset)
 
-    def flush(self, offset: int):
-        with self.log_path.open('ab') as log_file:
+    async def flush(self, offset: int):
+        async with aiofiles.open(self.log_path, 'ab') as log_file:
             while self.head_offset < offset:
                 key, value = self.memory.pop()
-                write_offset = log_file.tell()
+                write_offset = await log_file.tell()
                 self.head_offset += 1
                 if self.compaction_enabled:
                     if self.hash_index[key] != self.head_offset:  # if is not the most recent record, drop it, like we do with the file compaction
                         continue
                     self.hash_index[key] = self.file_offset_to_LA(write_offset)
-                self._write_kv_pair(log_file, key, value)
+                await self._write_kv_pair(log_file, key, value)
 
         if self.compaction_enabled:
             self.compaction_counter += 1
             if self.compaction_counter == self.compaction_interval:
-                self.compaction()
+                await self.compaction()
 
-    def compaction(self):
+    async def compaction(self):
         compacted_log_path = self.log_path.with_suffix('.tmp')
         #new_hash_index = {} # TODO i can copy the index here and keep the old one for as long as the compaction is running to enable reads concurrently
 
-        with self.log_path.open('rb') as log_file, compacted_log_path.open('ab') as compacted_log_file:
-            read_offset = log_file.tell()
-            k, v = self._read_kv_pair(log_file)
+        async with aiofiles.open(self.log_path, 'rb') as log_file, aiofiles.open(compacted_log_path, 'ab') as compacted_log_file:
+            read_offset = await log_file.tell()
+            k, v = await self._read_kv_pair(log_file)
             while k:
                 if self.file_offset_to_LA(read_offset) == self.hash_index[k]: # not checking if k in index as it is for sure (i never remove keys from the index so far)
-                    write_offset = compacted_log_file.tell()
-                    self._write_kv_pair(compacted_log_file, k, v)
+                    write_offset = await compacted_log_file.tell()
+                    await self._write_kv_pair(compacted_log_file, k, v)
                     self.hash_index[k] = self.file_offset_to_LA(write_offset) #new_hash_index[k] = write_offset # see TODO above
-                read_offset = log_file.tell()
-                k, v = self._read_kv_pair(log_file)
+                read_offset = await log_file.tell()
+                k, v = await self._read_kv_pair(log_file)
 
         # rename the file back
         compacted_log_path.rename(compacted_log_path.with_suffix(''))

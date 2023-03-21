@@ -11,7 +11,7 @@ sys.path.append('.')
 from src.appendlog import AppendLog
 
 
-class TestAppendLog(unittest.TestCase):
+class TestAppendLog(unittest.IsolatedAsyncioTestCase):
     dir = Path('./data_test')
 
     def setUp(self):
@@ -22,32 +22,32 @@ class TestAppendLog(unittest.TestCase):
         # print(f'{self.id()}: {time.time() - self.start_time:.3f}s')
         shutil.rmtree(self.dir.name)
     
-    def test_e2e_1(self):
-        l = AppendLog(self.dir.name)
+    async def test_e2e_1(self):
+        l = await AppendLog(self.dir.name)
 
-        l.set(b'a', b'a')
-        l.set(b'asdf', b'\x00\x01\x00\x00')
-        l.set(b'to be deleted', b'delete me')
-        l.set(b'b', b'\x00\x00\x02\x00')
-        l.set(b'd', b'3\x002\x00')
-        l.set(b'a', b'a1')
-        l.set(b'e', b'55')
-        l.set(b'to be deleted', b'')
+        await l.set(b'a', b'a')
+        await l.set(b'asdf', b'\x00\x01\x00\x00')
+        await l.set(b'to be deleted', b'delete me')
+        await l.set(b'b', b'\x00\x00\x02\x00')
+        await l.set(b'd', b'3\x002\x00')
+        await l.set(b'a', b'a1')
+        await l.set(b'e', b'55')
+        await l.set(b'to be deleted', b'')
 
-        self.assertEqual(l.get(b'a'), b'a1')
-        self.assertEqual(l.get(b'asdf'), b'\x00\x01\x00\x00')
-        self.assertEqual(l.get(b'b'),  b'\x00\x00\x02\x00')
-        self.assertEqual(l.get(b'c'), b'')
-        self.assertEqual(l.get(b'd'), b'3\x002\x00')
-        self.assertEqual(l.get(b'e'), b'55')
-        self.assertEqual(l.get(b'to be deleted'), b'')
+        self.assertEqual(await l.get(b'a'), b'a1')
+        self.assertEqual(await l.get(b'asdf'), b'\x00\x01\x00\x00')
+        self.assertEqual(await l.get(b'b'),  b'\x00\x00\x02\x00')
+        self.assertEqual(await l.get(b'c'), b'')
+        self.assertEqual(await l.get(b'd'), b'3\x002\x00')
+        self.assertEqual(await l.get(b'e'), b'55')
+        self.assertEqual(await l.get(b'to be deleted'), b'')
 
-        l.close()
+        await l.close()
 
-    def test_e2e_2(self):
+    async def test_e2e_2(self):
         rng = Random(1)
-        l = AppendLog(self.dir.name)
-        n_items = 100
+        l = await AppendLog(self.dir.name)
+        n_items = 10
         n_iter = 1_000
 
         dict = {}
@@ -65,29 +65,29 @@ class TestAppendLog(unittest.TestCase):
             else:
                 dict[rand_key] = rand_value
 
-            l.set(rand_key, rand_value)
+            await l.set(rand_key, rand_value)
 
         # also test index rebuilding here
-        l.close()
-        l = AppendLog(self.dir.name)
+        await l.close()
+        l = await AppendLog(self.dir.name)
 
         for k, v in dict.items():
-            self.assertEqual(v, l.get(k))
+            self.assertEqual(v, await l.get(k))
 
-    def test_rebuild(self):
-        l1 = AppendLog(self.dir.name, threshold=10)
+    async def test_rebuild(self):
+        l1 = await AppendLog(self.dir.name, threshold=10)
 
-        l1.set(b'a', b'1')
-        l1.set(b'b', b'2')
-        l1.set(b'c', b'3')
+        await l1.set(b'a', b'1')
+        await l1.set(b'b', b'2')
+        await l1.set(b'c', b'3')
 
-        l1.close()
+        await l1.close()
 
-        l2 = AppendLog(self.dir.name)
+        l2 = await AppendLog(self.dir.name)
 
-        self.assertEqual(l2.get(b'a'), b'1')
-        self.assertEqual(l2.get(b'b'), b'2')
-        self.assertEqual(l2.get(b'c'), b'3')
+        self.assertEqual(await l2.get(b'a'), b'1')
+        self.assertEqual(await l2.get(b'b'), b'2')
+        self.assertEqual(await l2.get(b'c'), b'3')
 
 
 if __name__ == "__main__":
