@@ -25,7 +25,7 @@ Python 3.11, `pip install -r requirements.txt`
 
 #### Roadmap:
 
-- [ ] LSMTree
+- [x] LSMTree
   - [x] memtable
   - [x] bloom filters
   - [x] flush the memtable
@@ -35,18 +35,18 @@ Python 3.11, `pip install -r requirements.txt`
     - [x] bloom filters persistence
   - [x] merging multiple levels
   - [x] WAL
-  - [x] asyncio
-- [ ] HybridLog
+  - [x] asyncio (async branch for now)
+- [x] HybridLog
   - [x] basis
   - [x] hash index
   - [x] logical addresses
   - [x] compaction
-  - [x] asyncio
-- [ ] AppendLog
+  - [x] asyncio (async branch)
+- [x] AppendLog
   - [x] basis
   - [x] compaction
   - [x] merging multiple levels
-  - [x] asyncio
+  - [x] asyncio (async branch)
 - [ ] Benchmarks
   - [x] distributions
   - [ ] basic throughput
