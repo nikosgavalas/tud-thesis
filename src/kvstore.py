@@ -49,6 +49,7 @@ class KVStore():
         fd.write(key)
         fd.write(struct.pack('<B', len(value)))
         fd.write(value)
+        fd.flush()
 
     # abstract methods
     def __getitem__(self, key):
