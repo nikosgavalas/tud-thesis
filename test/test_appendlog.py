@@ -46,9 +46,9 @@ class TestAppendLog(unittest.TestCase):
 
     def test_e2e_2(self):
         rng = Random(1)
-        l = AppendLog(self.dir.name)
+        l = AppendLog(self.dir.name, threshold=1000)
         n_items = 100
-        n_iter = 1_000
+        n_iter = 100_000
 
         dict = {}
         keys = [rng.randbytes(rng.randint(1, 10)) for _ in range(n_items)]

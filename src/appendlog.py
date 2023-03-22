@@ -41,7 +41,7 @@ class AppendLog(KVStore):
             self.levels[i] += 1
 
         # rebuild the index 
-        for level_idx, n_runs in enumerate(self.levels):
+        for level_idx, n_runs in reversed(list(enumerate(self.levels))):
             for run_idx in range(n_runs):
                 log_path = self.data_dir / f'L{level_idx}.{run_idx}.run'
                 with log_path.open('rb') as log_file:
@@ -111,8 +111,12 @@ class AppendLog(KVStore):
                             self.hash_index[k] = Record(next_level, next_run, dst_offset)
                     src_offset = src_file.tell()
                     k, v = self._read_kv_pair(src_file)
-
-        # bump the runs counter
+        
+        # delete merged files
+        for run_idx in range(self.levels[level]):
+            (self.data_dir / f'L{level}.{run_idx}.run').unlink()
+        # update the runs counter
+        self.levels[level] = 0
         self.levels[next_level] += 1
         # merge recursively
         if self.levels[next_level] > self.max_runs_per_level:
