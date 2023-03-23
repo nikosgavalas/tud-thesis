@@ -63,6 +63,8 @@ class TestHybridLog(unittest.TestCase):
         
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
+        
+        l.close()
 
     def test_offset_translation(self):
         rng = Random(1)
@@ -72,6 +74,8 @@ class TestHybridLog(unittest.TestCase):
         for _ in range(100):
             i = rng.randint(0, 100)
             self.assertEqual(l.file_offset_to_LA(l.LA_to_file_offset(i)), i)
+        
+        l.close()
 
     def test_index_rebuild(self):
         rng = Random(1)
@@ -101,6 +105,8 @@ class TestHybridLog(unittest.TestCase):
 
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
+        
+        l.close()
 
     def test_compaction(self):
         rng = Random(1)
@@ -127,6 +133,8 @@ class TestHybridLog(unittest.TestCase):
 
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
+        
+        l.close()
 
 
 if __name__ == "__main__":

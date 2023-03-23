@@ -30,6 +30,8 @@ class TestLSMTree(unittest.TestCase):
         self.assertEqual(l.get(b'b'), b'3')
         self.assertEqual(l.get(b'asdf'), b'12345')
         self.assertEqual(l.get(b'cc'), b'cici345')
+
+        l.close()
     
     def test_e2e_2(self):
         # highly granular, fishing for edgecases
@@ -58,6 +60,8 @@ class TestLSMTree(unittest.TestCase):
 
             for k, v in dict.items():
                 self.assertEqual(v, l.get(k))
+
+            l.close()
 
     def test_e2e_3(self):
         # more realistic
@@ -90,6 +94,8 @@ class TestLSMTree(unittest.TestCase):
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
 
+        l.close()
+
     def test_merge_1(self):
         l = LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
 
@@ -109,6 +115,8 @@ class TestLSMTree(unittest.TestCase):
             content = f.read()
 
         self.assertEqual(content, b'\x02a1\x03a11\x02a2\x03a22\x02a3\x03a31\x02a4\x02a4\x02a5\x02a5\x02a6\x02a6')
+
+        l.close()
     
     def test_wal(self):
         l1 = LSMTree(self.dir.name)
@@ -124,6 +132,8 @@ class TestLSMTree(unittest.TestCase):
         self.assertEqual(l2.get(b'a'), b'1')
         self.assertEqual(l2.get(b'b'), b'2')
         self.assertEqual(l2.get(b'c'), b'3')
+
+        l2.close()
 
 
 if __name__ == "__main__":

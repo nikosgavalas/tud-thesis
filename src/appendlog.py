@@ -1,5 +1,9 @@
+from collections import namedtuple
+
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 
+
+Record = namedtuple('Record', ['level', 'run', 'offset'])
 
 class AppendLog(KVStore):
     def __init__(self, data_dir='./data', max_runs_per_level=3, threshold=4_000_000):
@@ -72,7 +76,7 @@ class AppendLog(KVStore):
 
         record = self.hash_index[key]
 
-        with (self.data_dir / str(record)).open('rb') as log_file:
+        with (self.data_dir / f'L{record.level}.{record.run}.run').open('rb') as log_file:
             log_file.seek(record.offset)
             k, v = self._read_kv_pair(log_file)
             assert k == key
@@ -125,26 +129,3 @@ class AppendLog(KVStore):
         # merge recursively
         if self.levels[next_level] > self.max_runs_per_level:
             self.merge(next_level)
-
-
-# TODO change to namedtuple? maybe it's faster
-class Record():
-    def __init__(self, level: int, run: int, offset: int):
-        self.level = level
-        self.run = run
-        self.offset = offset
-
-    def __eq__(self, other):
-        # I can implement lt, le, gt, ge in the same way if needed
-        return ((self.level, self.run, self.offset)
-            == (other.level, other.run, other.offset))
-
-    def __ne__(self, other):
-        return ((self.level, self.run, self.offset)
-            != (other.level, other.run, other.offset))
-
-    def __str__(self):
-        return f'L{self.level}.{self.run}.run'
-
-    def __repr__(self):
-        return f'({self.level},{self.run},{self.offset})'

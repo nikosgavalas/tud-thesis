@@ -3,6 +3,8 @@ LSM Tree with size-tiered compaction (write-optimized)
 TODO: consider using mmap for the files
 '''
 
+from collections import namedtuple
+
 from sortedcontainers import SortedDict
 
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
@@ -11,10 +13,12 @@ from src.fence import FencePointers
 
 
 # TODO change to namedtuple
-class Run:
-    def __init__(self, filter, pointers):
-        self.filter = filter
-        self.pointers = pointers
+# class Run:
+#     def __init__(self, filter, pointers):
+#         self.filter = filter
+#         self.pointers = pointers
+
+Run = namedtuple('Run', ['filter', 'pointers'])
 
 
 class LSMTree(KVStore):
