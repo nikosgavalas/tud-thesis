@@ -52,7 +52,10 @@ class AppendLog(KVStore):
                         offset = log_file.tell()
                         k, _ = self._read_kv_pair(log_file)
 
+        self.latest_log_file = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
+
     def close(self):
+        self.latest_log_file.close()
         self.save_metadata()
 
     def __getitem__(self, key):
@@ -79,19 +82,20 @@ class AppendLog(KVStore):
         assert type(key) is bytes and type(value) is bytes and 0 < len(key) <= MAX_KEY_LENGTH and len(value) <= MAX_VALUE_LENGTH
 
         # always write the latest log of the first level
-        log_path = self.data_dir / f'L{0}.{self.levels[0]}.run'
-        with log_path.open('ab') as log_file:  # TODO consider keeping this file open all the time? will this make things considerably faster?
-            offset = log_file.tell()
-            self._write_kv_pair(log_file, key, value)
-            self.hash_index[key] = Record(0, self.levels[0], offset)
-            self.counter += len(key) + len(value)
+        offset = self.latest_log_file.tell()
+        self._write_kv_pair(self.latest_log_file, key, value)
+        self.hash_index[key] = Record(0, self.levels[0], offset)
+        self.counter += len(key) + len(value)
 
         if self.counter >= self.threshold:
             self.counter = 0
+            self.latest_log_file.close()
             self.levels[0] += 1
+            if self.levels[0] > self.max_runs_per_level:
+                self.merge(0)
+            # open a new file after merging
+            self.latest_log_file = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
 
-        if self.levels[0] > self.max_runs_per_level:
-            self.merge(0)
 
     def merge(self, level: int):
         next_level = level + 1

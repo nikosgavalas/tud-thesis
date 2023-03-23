@@ -73,6 +73,8 @@ class TestAppendLog(unittest.TestCase):
 
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
+        
+        l.close()
 
     def test_rebuild(self):
         l1 = AppendLog(self.dir.name, threshold=10)
@@ -89,6 +91,7 @@ class TestAppendLog(unittest.TestCase):
         self.assertEqual(l2.get(b'b'), b'2')
         self.assertEqual(l2.get(b'c'), b'3')
 
+        l2.close()
 
 if __name__ == "__main__":
     unittest.main()
