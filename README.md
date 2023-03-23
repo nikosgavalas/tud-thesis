@@ -62,70 +62,70 @@ Python 3.11, `pip install -r requirements.txt`
 ```
 number of distinct choices for keys and values: 100
 distribution:   Zipfian
-1.0e+06 writes  LSMTree:        0.770s
-1.0e+06 reads   LSMTree:        0.157s
-1.0e+06 writes  HybridLog:      0.377s
-1.0e+06 reads   HybridLog:      0.201s
-1.0e+06 writes  AppendLog:      9.787s
-1.0e+06 reads   AppendLog:      7.563s
+1.0e+06 writes  LSMTree:        0.741s
+1.0e+06 reads   LSMTree:        0.153s
+1.0e+06 writes  HybridLog:      0.374s
+1.0e+06 reads   HybridLog:      0.204s
+1.0e+06 writes  AppendLog:      2.116s
+1.0e+06 reads   AppendLog:      7.609s
 distribution:   HotSet
-1.0e+06 writes  LSMTree:        0.786s
-1.0e+06 reads   LSMTree:        0.159s
-1.0e+06 writes  HybridLog:      0.370s
-1.0e+06 reads   HybridLog:      0.232s
-1.0e+06 writes  AppendLog:      9.724s
-1.0e+06 reads   AppendLog:      7.669s
+1.0e+06 writes  LSMTree:        0.759s
+1.0e+06 reads   LSMTree:        0.158s
+1.0e+06 writes  HybridLog:      0.376s
+1.0e+06 reads   HybridLog:      0.236s
+1.0e+06 writes  AppendLog:      2.209s
+1.0e+06 reads   AppendLog:      7.524s
 distribution:   Uniform
-1.0e+06 writes  LSMTree:        0.778s
-1.0e+06 reads   LSMTree:        0.156s
-1.0e+06 writes  HybridLog:      0.378s
-1.0e+06 reads   HybridLog:      0.203s
-1.0e+06 writes  AppendLog:      9.836s
-1.0e+06 reads   AppendLog:      7.961s
+1.0e+06 writes  LSMTree:        0.768s
+1.0e+06 reads   LSMTree:        0.146s
+1.0e+06 writes  HybridLog:      0.364s
+1.0e+06 reads   HybridLog:      0.212s
+1.0e+06 writes  AppendLog:      2.184s
+1.0e+06 reads   AppendLog:      7.601s
 
 number of distinct choices for keys and values: 10000
 distribution:   Zipfian
-1.0e+06 writes  LSMTree:        0.990s
-1.0e+06 reads   LSMTree:        0.278s
-1.0e+06 writes  HybridLog:      1.202s
-1.0e+06 reads   HybridLog:      0.906s
-1.0e+06 writes  AppendLog:      10.970s
-1.0e+06 reads   AppendLog:      8.006s
+1.0e+06 writes  LSMTree:        0.930s
+1.0e+06 reads   LSMTree:        0.253s
+1.0e+06 writes  HybridLog:      0.785s
+1.0e+06 reads   HybridLog:      0.871s
+1.0e+06 writes  AppendLog:      2.230s
+1.0e+06 reads   AppendLog:      7.620s
 distribution:   HotSet
-1.0e+06 writes  LSMTree:        1.070s
-1.0e+06 reads   LSMTree:        1.385s
-1.0e+06 writes  HybridLog:      2.335s
-1.0e+06 reads   HybridLog:      2.488s
-1.0e+06 writes  AppendLog:      10.249s
-1.0e+06 reads   AppendLog:      8.296s
+1.0e+06 writes  LSMTree:        0.987s
+1.0e+06 reads   LSMTree:        1.291s
+1.0e+06 writes  HybridLog:      1.330s
+1.0e+06 reads   HybridLog:      2.377s
+1.0e+06 writes  AppendLog:      2.371s
+1.0e+06 reads   AppendLog:      7.703s
 distribution:   Uniform
-1.0e+06 writes  LSMTree:        1.032s
-1.0e+06 reads   LSMTree:        0.191s
-1.0e+06 writes  HybridLog:      2.403s
-1.0e+06 reads   HybridLog:      3.754s
-1.0e+06 writes  AppendLog:      10.250s
-1.0e+06 reads   AppendLog:      8.250s
+1.0e+06 writes  LSMTree:        0.939s
+1.0e+06 reads   LSMTree:        0.204s
+1.0e+06 writes  HybridLog:      1.283s
+1.0e+06 reads   HybridLog:      3.584s
+1.0e+06 writes  AppendLog:      2.434s
+1.0e+06 reads   AppendLog:      7.761s
 
 number of distinct choices for keys and values: 1000000
 distribution:   Zipfian
-1.0e+06 writes  LSMTree:        2.557s
-1.0e+06 reads   LSMTree:        3.589s
-1.0e+06 writes  HybridLog:      1.927s
-1.0e+06 reads   HybridLog:      2.637s
-1.0e+06 writes  AppendLog:      10.914s
-1.0e+06 reads   AppendLog:      8.518s
+1.0e+06 writes  LSMTree:        2.488s
+1.0e+06 reads   LSMTree:        3.474s
+1.0e+06 writes  HybridLog:      1.172s
+1.0e+06 reads   HybridLog:      2.539s
+1.0e+06 writes  AppendLog:      2.569s
+1.0e+06 reads   AppendLog:      8.052s
 distribution:   HotSet
-1.0e+06 writes  LSMTree:        5.164s
-1.0e+06 reads   LSMTree:        7.131s
-1.0e+06 writes  HybridLog:      3.021s
-1.0e+06 reads   HybridLog:      5.045s
-1.0e+06 writes  AppendLog:      11.544s
-1.0e+06 reads   AppendLog:      8.918s
+1.0e+06 writes  LSMTree:        5.182s
+1.0e+06 reads   LSMTree:        7.186s
+1.0e+06 writes  HybridLog:      1.985s
+1.0e+06 reads   HybridLog:      4.844s
+1.0e+06 writes  AppendLog:      3.266s
+1.0e+06 reads   AppendLog:      8.366s
 distribution:   Uniform
-1.0e+06 writes  LSMTree:        6.270s
-1.0e+06 reads   LSMTree:        11.335s
-1.0e+06 writes  HybridLog:      3.065s
-1.0e+06 reads   HybridLog:      5.237s
-1.0e+06 writes  AppendLog:      11.925s
-1.0e+06 reads   AppendLog:      8.925s
+1.0e+06 writes  LSMTree:        5.611s
+1.0e+06 reads   LSMTree:        10.555s
+1.0e+06 writes  HybridLog:      1.793s
+1.0e+06 reads   HybridLog:      5.179s
+1.0e+06 writes  AppendLog:      3.290s
+1.0e+06 reads   AppendLog:      8.199s
 ```

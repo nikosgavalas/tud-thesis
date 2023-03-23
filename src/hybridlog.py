@@ -116,7 +116,6 @@ class HybridLog(KVStore):
         fd.write(key + b'\x00' * (self.max_key_len - len(key)))  # key padded with \x00's
         fd.write(struct.pack('<B', len(value)))
         fd.write(value + b'\x00' * (self.max_value_len - len(value)))  # same for value
-        fd.flush()
 
     def __getitem__(self, key):
         return self.get(key)

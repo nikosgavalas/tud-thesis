@@ -44,12 +44,13 @@ class KVStore():
         value = fd.read(val_len)
         return key, value
 
-    def _write_kv_pair(self, fd, key, value):
+    def _write_kv_pair(self, fd, key, value, flush=False):
         fd.write(struct.pack('<B', len(key)))
         fd.write(key)
         fd.write(struct.pack('<B', len(value)))
         fd.write(value)
-        fd.flush()
+        if flush:
+            fd.flush()
 
     # abstract methods
     def __getitem__(self, key):

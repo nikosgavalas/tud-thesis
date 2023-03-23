@@ -87,7 +87,7 @@ class AppendLog(KVStore):
 
         # always write the latest log of the first level
         offset = self.latest_log_file.tell()
-        self._write_kv_pair(self.latest_log_file, key, value)
+        self._write_kv_pair(self.latest_log_file, key, value, flush=True)
         self.hash_index[key] = Record(0, self.levels[0], offset)
         self.counter += len(key) + len(value)
 
@@ -99,7 +99,6 @@ class AppendLog(KVStore):
                 self.merge(0)
             # open a new file after merging
             self.latest_log_file = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
-
 
     def merge(self, level: int):
         next_level = level + 1

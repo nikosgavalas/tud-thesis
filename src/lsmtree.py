@@ -12,12 +12,6 @@ from src.bloom import BloomFilter
 from src.fence import FencePointers
 
 
-# TODO change to namedtuple
-# class Run:
-#     def __init__(self, filter, pointers):
-#         self.filter = filter
-#         self.pointers = pointers
-
 Run = namedtuple('Run', ['filter', 'pointers'])
 
 
