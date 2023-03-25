@@ -6,9 +6,9 @@ from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 Record = namedtuple('Record', ['level', 'run', 'offset'])
 
 class AppendLog(KVStore):
+    name = 'AppendLog'
     def __init__(self, data_dir='./data', max_runs_per_level=3, threshold=4_000_000):
         self.type = 'appendlog'
-        self.name = 'AppendLog'
         super().__init__(data_dir)
 
         # about state:

@@ -53,9 +53,8 @@ Python 3.11, `pip install -r requirements.txt`
 
 
 #### TODOs
-- AppendLog looks abysmal, I think it is because I don't keep the log open all the time. I should change it asap.
-- Do some profiling
-- More metrics (like total disk usage?) and more scenarios (instead of just x reads and x writes?)
+- AppendLog looks abysmal, profiling shows it's mostly because of the fopens. i should keep the files open.
+- More metrics (like total disk usage, ram usage, recovery times, also for various key/val lengths) and more scenarios (instead of just x reads and x writes?)
 
 #### Some basic initial measurements
 

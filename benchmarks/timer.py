@@ -2,7 +2,7 @@ import time
 
 
 class Timer:
-    def __init__(self, name='', print=True, truncate=True):
+    def __init__(self, name='', print=False, truncate=True):
         self.name = name
         self.print = print
         self.truncate = truncate

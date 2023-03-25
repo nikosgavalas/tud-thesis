@@ -3,3 +3,4 @@ data/
 .vscode/
 data_test/
 benchmark_data_*
+.idea
