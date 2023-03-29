@@ -25,10 +25,12 @@ class AppendLog(KVStore):
         # also, I can detect if a record is malformed by checking if the len(key) and len(value) are equal
         # to their encoding byte when reading
 
-        # TODO what do i do with the deletes?
-
         # actually I completely removed compaction. It adds a lot of complexity for no benefit, since
         # all the potential benefit is actually reaped anyway in the merging phase.
+
+        # NOTE: handled deletes nicely, optimized by keeping the files open for reading, since 50% of the time was being
+        # wasted in fopens as profiling showed.
+
         assert max_runs_per_level >= 1
         assert threshold > 0
 
@@ -44,22 +46,28 @@ class AppendLog(KVStore):
         for i in data_files_levels:
             self.levels[i] += 1
 
+        # read file-descriptors
+        self.rfds = [[(self.data_dir / f'L{level_idx}.{run_idx}.run').open('rb') for run_idx in range(n_runs)] for level_idx, n_runs in enumerate(self.levels)]
+        # write file-descriptor
+        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('wb')
+        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
+
         # rebuild the index 
         for level_idx, n_runs in reversed(list(enumerate(self.levels))):
             for run_idx in range(n_runs):
-                log_path = self.data_dir / f'L{level_idx}.{run_idx}.run'
-                with log_path.open('rb') as log_file:
+                log_file = self.rfds[level_idx][run_idx]
+                offset = log_file.tell()
+                k, _ = self._read_kv_pair(log_file)
+                while k:
+                    self.hash_index[k] = Record(level_idx, run_idx, offset)
                     offset = log_file.tell()
                     k, _ = self._read_kv_pair(log_file)
-                    while k:
-                        self.hash_index[k] = Record(level_idx, run_idx, offset)
-                        offset = log_file.tell()
-                        k, _ = self._read_kv_pair(log_file)
-
-        self.latest_log_file = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
 
     def close(self):
-        self.latest_log_file.close()
+        self.wfd.close()
+        for rfds in self.rfds:
+            for rfd in rfds:
+                rfd.close()
         self.save_metadata()
 
     def __getitem__(self, key):
@@ -76,50 +84,61 @@ class AppendLog(KVStore):
 
         record = self.hash_index[key]
 
-        with (self.data_dir / f'L{record.level}.{record.run}.run').open('rb') as log_file:
-            log_file.seek(record.offset)
-            k, v = self._read_kv_pair(log_file)
-            assert k == key
-            return v
+        log_file = self.rfds[record.level][record.run]
+        log_file.seek(record.offset)
+        k, v = self._read_kv_pair(log_file)
+        assert k == key
+        return v
 
     def set(self, key: bytes, value: bytes = EMPTY):
         assert type(key) is bytes and type(value) is bytes and 0 < len(key) <= MAX_KEY_LENGTH and len(value) <= MAX_VALUE_LENGTH
 
+        if not value and key in self.hash_index:
+            del self.hash_index[key]
+            return
+
         # always write the latest log of the first level
-        offset = self.latest_log_file.tell()
-        self._write_kv_pair(self.latest_log_file, key, value, flush=True)
+        offset = self.wfd.tell()
+        self._write_kv_pair(self.wfd, key, value, flush=True)
         self.hash_index[key] = Record(0, self.levels[0], offset)
         self.counter += len(key) + len(value)
 
         if self.counter >= self.threshold:
             self.counter = 0
-            self.latest_log_file.close()
+            self.wfd.close()
             self.levels[0] += 1
             if self.levels[0] > self.max_runs_per_level:
                 self.merge(0)
             # open a new file after merging
-            self.latest_log_file = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
+            self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
+            self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
 
     def merge(self, level: int):
         next_level = level + 1
         if level + 1 >= len(self.levels):
             self.levels.append(0)
+            self.rfds.append([])
         next_run = self.levels[level + 1]
 
+        dst_file = (self.data_dir / f'L{next_level}.{next_run}.run').open('ab')
         for run_idx in range(self.levels[level]):
-            with (self.data_dir / f'L{level}.{run_idx}.run').open('rb') as src_file, (self.data_dir / f'L{next_level}.{next_run}.run').open('ab') as dst_file:
+            src_file = self.rfds[level][run_idx]
+            src_offset = src_file.tell()
+            k, v = self._read_kv_pair(src_file)
+            while k:
+                if k in self.hash_index and self.hash_index[k] == Record(level, run_idx, src_offset):
+                    dst_offset = dst_file.tell()
+                    self._write_kv_pair(dst_file, k, v)
+                    self.hash_index[k] = Record(next_level, next_run, dst_offset)
                 src_offset = src_file.tell()
                 k, v = self._read_kv_pair(src_file)
-                while k:
-                    if k in self.hash_index:
-                        if self.hash_index[k] == Record(level, run_idx, src_offset):
-                            dst_offset = dst_file.tell()
-                            self._write_kv_pair(dst_file, k, v)
-                            self.hash_index[k] = Record(next_level, next_run, dst_offset)
-                    src_offset = src_file.tell()
-                    k, v = self._read_kv_pair(src_file)
-        
+        dst_file.close()
+        self.rfds[next_level].append((self.data_dir / f'L{next_level}.{next_run}.run').open('rb'))
+
         # delete merged files
+        for rfd in self.rfds[level]:
+            rfd.close()
+        self.rfds[level].clear()
         for run_idx in range(self.levels[level]):
             (self.data_dir / f'L{level}.{run_idx}.run').unlink()
         # update the runs counter

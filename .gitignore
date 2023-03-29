@@ -5,3 +5,5 @@ data_test/
 benchmark_data_*
 .idea
 tmp.py
+tmp.txt
+*.csv
