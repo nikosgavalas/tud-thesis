@@ -8,7 +8,7 @@ from src.hashindex import HashIndex
 
 
 class TestHashIndex(unittest.TestCase):
-    def test_generic(self):
+    def test_basic(self):
         h = HashIndex()
         h[b'asdf'] = 12
         self.assertEqual(h[b'asdf'], 12)

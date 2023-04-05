@@ -1,7 +1,6 @@
 import sys
 import unittest
 import shutil
-from random import Random
 from pathlib import Path
 
 # make it runnable from the root level
@@ -9,9 +8,10 @@ sys.path.append('.')
 
 from src.lsmtree import LSMTree
 from src.replication import PathReplica, MinioReplica
+from fuzzy import FuzzyTester
 
 
-class TestLSMTree(unittest.TestCase):
+class TestLSMTree(unittest.TestCase, FuzzyTester):
     dir = Path('./data_test')
 
     def setUp(self):
@@ -23,7 +23,7 @@ class TestLSMTree(unittest.TestCase):
         shutil.rmtree(self.dir.name)
         self.replica.destroy()
 
-    def test_e2e_1(self):
+    def test_basic(self):
         l = LSMTree(self.dir.name, max_runs_per_level=3, density_factor=3, memtable_bytes_limit=10)
 
         l.set(b'b', b'2')
@@ -37,71 +37,18 @@ class TestLSMTree(unittest.TestCase):
 
         l.close()
     
-    def test_e2e_2(self):
+    def test_fuzzy_1(self):
         # highly granular, fishing for edgecases
-        for a in range(1):  # change this range to as much as you want to wait
-            rng = Random(a)
-            l = LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
-            n_items = 10
-            n_iter = 10_000
+        self.fuzzy_test(LSMTree, args={'data_dir': self.dir.name, 'max_runs_per_level': 2, 'density_factor': 3, 'memtable_bytes_limit': 10},
+            key_len_range=(1, 10), val_len_range=(0, 13), n_items=10, n_iter=10_000, seeds=[1], test_recovery=False, test_replica=False)
 
-            dict = {}  # testing against the python dict
-            keys = [rng.randbytes(rng.randint(1, 10)) for _ in range(n_items)]
-            values = [rng.randbytes(rng.randint(0, 13)) for _ in range(n_items)]
-
-            for _ in range(n_iter):
-                rand_idx = rng.randint(0, n_items - 1)
-                rand_key = keys[rand_idx]
-                rand_value = values[rand_idx]
-
-                if not rand_value:
-                    if rand_key in dict:
-                        del dict[rand_key]  # emulating the kvstore's behaviour ("value 0" == delete)
-                else:
-                    dict[rand_key] = rand_value
-
-                l.set(rand_key, rand_value)
-            
-            for k, v in dict.items():
-                self.assertEqual(v, l.get(k))
-
-            l.close()
-
-    def test_e2e_3(self):
+    def test_fuzzy_2(self):
         # more realistic, with replica
-        rng = Random(1)
-        l = LSMTree(self.dir.name, replica=self.replica)
-        n_items = 100
-        n_iter = 1_000_000
+        self.fuzzy_test(LSMTree, args={'data_dir': self.dir.name, 'replica':self.replica}, key_len_range=(1, 10),
+            val_len_range=(0, 13), n_items=100, n_iter=1_000_000, seeds=[1], test_recovery=True, test_replica=True
+        )
 
-        dict = {}
-        keys = [rng.randbytes(rng.randint(1, 10)) for _ in range(n_items)]
-        values = [rng.randbytes(rng.randint(0, 13)) for _ in range(n_items)]
-
-        for _ in range(n_iter):
-            rand_idx = rng.randint(0, n_items - 1)
-            rand_key = keys[rand_idx]
-            rand_value = values[rand_idx]
-
-            if not rand_value: # TODO fix the rest ones as this one!
-                if rand_key in dict:
-                    del dict[rand_key]
-            else:
-                dict[rand_key] = rand_value
-
-            l.set(rand_key, rand_value)
-
-        # also test with a full reset here
-        l.close()
-        shutil.rmtree(self.dir.name)
-        l = LSMTree(self.dir.name, replica=self.replica)
-
-        for k, v in dict.items():
-            self.assertEqual(v, l.get(k))
-
-        l.close()
-
-    def test_merge_1(self):
+    def test_merge(self):
         l = LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
 
         l.set(b'a1', b'a1')
@@ -140,7 +87,7 @@ class TestLSMTree(unittest.TestCase):
 
         l2.close()
 
-    def test_remote(self):
+    def test_replica(self):
         l = LSMTree(self.dir.name, replica=self.replica)
         l.set(b'a', b'1')
         l.set(b'b', b'2')

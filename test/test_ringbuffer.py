@@ -7,7 +7,7 @@ from src.ringbuffer import RingBuffer
 
 
 class TestRingBuffer(unittest.TestCase):
-    def test_generic(self):
+    def test_basic(self):
         r = RingBuffer(5)
         self.assertTrue(r.is_empty())
         self.assertEqual(len(r), 0)

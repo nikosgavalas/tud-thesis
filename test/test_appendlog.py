@@ -1,28 +1,25 @@
 import sys
 import unittest
 import shutil
-from random import Random
 from pathlib import Path
-# import time
 
 # make it runnable from the root level
 sys.path.append('.')
 
 from src.appendlog import AppendLog
+from fuzzy import FuzzyTester
 
 
-class TestAppendLog(unittest.TestCase):
+class TestAppendLog(unittest.TestCase, FuzzyTester):
     dir = Path('./data_test')
 
     def setUp(self):
         self.dir.mkdir()
-        # self.start_time = time.time()
 
     def tearDown(self):
-        # print(f'{self.id()}: {time.time() - self.start_time:.3f}s')
         shutil.rmtree(self.dir.name)
     
-    def test_e2e_1(self):
+    def test_basic(self):
         l = AppendLog(self.dir.name)
 
         l.set(b'a', b'a')
@@ -44,37 +41,9 @@ class TestAppendLog(unittest.TestCase):
 
         l.close()
 
-    def test_e2e_2(self):
-        rng = Random(1)
-        l = AppendLog(self.dir.name, threshold=1000)
-        n_items = 100
-        n_iter = 100_000
-
-        dict = {}
-        keys = [rng.randbytes(rng.randint(1, 10)) for _ in range(n_items)]
-        values = [rng.randbytes(rng.randint(0, 10)) for _ in range(n_items)]
-
-        for _ in range(n_iter):
-            rand_idx = rng.randint(0, n_items - 1)
-            rand_key = keys[rand_idx]
-            rand_value = values[rand_idx]
-
-            if not rand_value:
-                if rand_key in dict:
-                    del dict[rand_key]
-            else:
-                dict[rand_key] = rand_value
-
-            l.set(rand_key, rand_value)
-
-        # also test index rebuilding here
-        l.close()
-        l = AppendLog(self.dir.name)
-
-        for k, v in dict.items():
-            self.assertEqual(v, l.get(k))
-        
-        l.close()
+    def test_fuzzy(self):
+        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'threshold': 1_000}, key_len_range=(1, 10),
+        val_len_range=(0, 10), n_items=100, n_iter=100_000, seeds=[1], test_recovery=True, test_replica=False)
 
     def test_rebuild(self):
         l1 = AppendLog(self.dir.name, threshold=10)
