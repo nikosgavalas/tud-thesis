@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.append('.')
 
 from src.appendlog import AppendLog
+from src.replication import PathReplica, MinioReplica
 from fuzzy import FuzzyTester
 
 
@@ -14,10 +15,13 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
     dir = Path('./data_test')
 
     def setUp(self):
+        self.replica = PathReplica(self.dir.name, '/tmp/remote')
+        # self.replica = MinioReplica(self.dir.name, 'testbucket')
         self.dir.mkdir()
 
     def tearDown(self):
         shutil.rmtree(self.dir.name)
+        self.replica.destroy()
     
     def test_basic(self):
         l = AppendLog(self.dir.name)
@@ -42,8 +46,8 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
         l.close()
 
     def test_fuzzy(self):
-        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'threshold': 1_000}, key_len_range=(1, 10),
-        val_len_range=(0, 10), n_items=100, n_iter=100_000, seeds=[1], test_recovery=True, test_replica=False)
+        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'threshold': 1_000, 'replica': self.replica},
+        key_len_range=(1, 10), val_len_range=(0, 10), n_items=100, n_iter=100_000, seeds=[1], test_recovery=True, test_replica=True)
 
     def test_rebuild(self):
         l1 = AppendLog(self.dir.name, threshold=10)

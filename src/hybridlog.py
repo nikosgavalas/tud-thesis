@@ -36,19 +36,21 @@ Something I haven't done (iirc in the appendlog implementation as well) is clear
 removed from the db. well, TODO.
 '''
 
+from typing import Optional
 import struct
 
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 from src.hashindex import HashIndex
 from src.ringbuffer import RingBuffer
+from src.replication import Replica
 
 
 class HybridLog(KVStore):
     name = 'HybridLog'
-    def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=2**20,
-            ro_lag_interval=2**10, flush_interval=(4 * 2**10), hash_index='dict', compaction_interval=0):
+    def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=2**20, ro_lag_interval=2**10,
+        flush_interval=(4 * 2**10), hash_index='dict', compaction_interval=0, replica: Optional[Replica] = None):
         self.type = 'hybridlog'
-        super().__init__(data_dir)
+        super().__init__(data_dir, replica=replica)
 
         assert 0 < max_key_len <= MAX_KEY_LENGTH
         assert 0 < max_value_len <= MAX_VALUE_LENGTH
@@ -95,6 +97,9 @@ class HybridLog(KVStore):
     def close(self):
         self.flush(self.tail_offset)  # flush everything
         self.save_metadata()
+        if self.replica:
+            self.replica.put(self.log_path.name)
+            self.replica.put(self.metadata_path.name)
 
     def _read_kv_pair(self, fd, file_offset=None):
             if not file_offset:
@@ -174,10 +179,16 @@ class HybridLog(KVStore):
                     self.hash_index[key] = self.file_offset_to_LA(write_offset)
                 self._write_kv_pair(log_file, key, value)
 
+        if self.replica and not self.compaction_enabled:
+            self.replica.put(self.log_path.name)
+
         if self.compaction_enabled:
             self.compaction_counter += 1
             if self.compaction_counter == self.compaction_interval:
                 self.compaction()
+                # if compaction is enabled, wait to sync to replica store *after* the compaction
+                if self.replica and self.compaction_enabled:
+                    self.replica.put(self.log_path.name)
 
     def compaction(self):
         compacted_log_path = self.log_path.with_suffix('.tmp')

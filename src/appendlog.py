@@ -1,15 +1,17 @@
+from typing import Optional
 from collections import namedtuple
 
 from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
+from src.replication import Replica
 
 
 Record = namedtuple('Record', ['level', 'run', 'offset'])
 
 class AppendLog(KVStore):
     name = 'AppendLog'
-    def __init__(self, data_dir='./data', max_runs_per_level=3, threshold=4_000_000):
+    def __init__(self, data_dir='./data', max_runs_per_level=3, threshold=4_000_000, replica: Optional[Replica] = None):
         self.type = 'appendlog'
-        super().__init__(data_dir)
+        super().__init__(data_dir, replica=replica)
 
         # about state:
         # the state here, runs_per_level, contrary to the LSMTree implementation, keeps track
@@ -69,6 +71,9 @@ class AppendLog(KVStore):
             for rfd in rfds:
                 rfd.close()
         self.save_metadata()
+        if self.replica:
+            self.replica.put(self.metadata_path.name)
+            self.replica.put(self.wfd.name)
 
     def __getitem__(self, key):
         return self.get(key)
@@ -106,9 +111,14 @@ class AppendLog(KVStore):
         if self.counter >= self.threshold:
             self.counter = 0
             self.wfd.close()
+
+            if self.replica:
+                self.replica.put(self.wfd.name)
+
             self.levels[0] += 1
             if self.levels[0] > self.max_runs_per_level:
                 self.merge(0)
+
             # open a new file after merging
             self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
             self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
@@ -133,6 +143,10 @@ class AppendLog(KVStore):
                 src_offset = src_file.tell()
                 k, v = self._read_kv_pair(src_file)
         dst_file.close()
+
+        if self.replica:
+            self.replica.put(dst_file.name)
+
         self.rfds[next_level].append((self.data_dir / f'L{next_level}.{next_run}.run').open('rb'))
 
         # delete merged files
@@ -140,7 +154,10 @@ class AppendLog(KVStore):
             rfd.close()
         self.rfds[level].clear()
         for run_idx in range(self.levels[level]):
-            (self.data_dir / f'L{level}.{run_idx}.run').unlink()
+            path_to_remove = (self.data_dir / f'L{level}.{run_idx}.run')
+            path_to_remove.unlink()
+            if self.replica:
+                self.replica.rm(path_to_remove.name)
         # update the runs counter
         self.levels[level] = 0
         self.levels[next_level] += 1

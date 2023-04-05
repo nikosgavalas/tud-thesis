@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.append('.')
 
 from src.hybridlog import HybridLog
+from src.replication import PathReplica, MinioReplica
 from fuzzy import FuzzyTester
 
 
@@ -15,10 +16,13 @@ class TestHybridLog(unittest.TestCase, FuzzyTester):
     dir = Path('./data_test')
 
     def setUp(self):
+        self.replica = PathReplica(self.dir.name, '/tmp/remote')
+        # self.replica = MinioReplica(self.dir.name, 'testbucket')
         self.dir.mkdir()
 
     def tearDown(self):
         shutil.rmtree(self.dir.name)
+        self.replica.destroy()
     
     def test_basic(self):
         l = HybridLog(self.dir.name, mem_segment_len=3, ro_lag_interval=1, flush_interval=1)
@@ -50,8 +54,8 @@ class TestHybridLog(unittest.TestCase, FuzzyTester):
     def test_fuzzy_3(self):
         # compaction focused
         self.fuzzy_test(HybridLog, args={'data_dir': self.dir.name, 'mem_segment_len': 300, 'ro_lag_interval': 100, 'flush_interval': 100,
-            'compaction_interval': 8}, key_len_range=(1, 4), val_len_range=(0, 4), n_items=1_000, n_iter=10_000, seeds=[1],
-            test_recovery=False, test_replica=False)
+            'compaction_interval': 8, 'replica': self.replica}, key_len_range=(1, 4), val_len_range=(0, 4), n_items=1_000, n_iter=10_000, seeds=[1],
+            test_recovery=False, test_replica=True)
 
     def test_offset_translation(self):
         rng = Random(1)

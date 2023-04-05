@@ -38,13 +38,14 @@ class PathReplica(Replica):
             os.mkdir(self.remote_dir_path)
 
     def put(self, filename):
-        shutil.copy(os.path.join(self.src_dir_path, filename), self.remote_dir_path)
+        # using os.path.basename to be sure
+        shutil.copy(os.path.join(self.src_dir_path, os.path.basename(filename)), self.remote_dir_path)
 
     def get(self, filename):
-        shutil.copy(os.path.join(self.remote_dir_path, filename), self.src_dir_path)
+        shutil.copy(os.path.join(self.remote_dir_path, os.path.basename(filename)), self.src_dir_path)
 
     def rm(self, filename):
-        os.remove(os.path.join(self.src_dir_path, filename))
+        os.remove(os.path.join(self.remote_dir_path, os.path.basename(filename)))
 
     def restore(self):
         for file_name in os.listdir(self.remote_dir_path):
@@ -57,23 +58,25 @@ class PathReplica(Replica):
 
 
 class MinioReplica(Replica):
-    def __init__(self, src_dir_path, bucket, address='localhost:9000', access_key_fname='access.key', secret_key_fname='secret.key'):
+    def __init__(self, src_dir_path, bucket, address='localhost:9000', access_key_fname='access.key', secret_key_fname='secret.key', minio_client=None):
         super().__init__(src_dir_path)
 
         self.bucket = bucket
-        self.client = Minio(address, self.read_key(access_key_fname), self.read_key(secret_key_fname), secure=False)
+        self.client = minio_client if minio_client else Minio(address, self.read_key(access_key_fname), self.read_key(secret_key_fname), secure=False)
 
         if not self.client.bucket_exists(self.bucket):
             self.client.make_bucket(self.bucket)
 
     def put(self, filename):
+        filename = os.path.basename(filename)
         self.client.fput_object(self.bucket, filename, os.path.join(self.src_dir_path, filename))
 
     def get(self, filename):
+        filename = os.path.basename(filename)
         self.client.fget_object(self.bucket, filename, os.path.join(self.src_dir_path, filename))
 
     def rm(self, filename):
-        self.client.remove_object(self.bucket, filename)
+        self.client.remove_object(self.bucket, os.path.basename(filename))
 
     def restore(self):
         for o in self.client.list_objects(self.bucket):

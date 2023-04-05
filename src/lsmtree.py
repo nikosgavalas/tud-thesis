@@ -3,6 +3,7 @@ LSM Tree with size-tiered compaction (write-optimized)
 TODO: consider using mmap for the files
 '''
 
+from typing import Optional
 from collections import namedtuple
 
 from sortedcontainers import SortedDict
@@ -19,7 +20,7 @@ Run = namedtuple('Run', ['filter', 'pointers'])
 class LSMTree(KVStore):
     name = 'LSMTree'
     # NOTE the fence pointers can be used to organize data into compressible blocks
-    def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000, replica: Replica = None):
+    def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000, replica: Optional[Replica] = None):
         self.type = 'lsmtree'
         super().__init__(data_dir=data_dir, replica=replica)
 
