@@ -8,17 +8,21 @@ from pathlib import Path
 sys.path.append('.')
 
 from src.lsmtree import LSMTree
+from src.replication import PathReplica, MinioReplica
 
 
 class TestLSMTree(unittest.TestCase):
     dir = Path('./data_test')
 
     def setUp(self):
+        self.replica = PathReplica(self.dir.name, '/tmp/remote')
+        # self.replica = MinioReplica(self.dir.name, 'testbucket')
         self.dir.mkdir()
 
     def tearDown(self):
         shutil.rmtree(self.dir.name)
-    
+        self.replica.destroy()
+
     def test_e2e_1(self):
         l = LSMTree(self.dir.name, max_runs_per_level=3, density_factor=3, memtable_bytes_limit=10)
 
@@ -57,16 +61,16 @@ class TestLSMTree(unittest.TestCase):
                     dict[rand_key] = rand_value
 
                 l.set(rand_key, rand_value)
-
+            
             for k, v in dict.items():
                 self.assertEqual(v, l.get(k))
 
             l.close()
 
     def test_e2e_3(self):
-        # more realistic
+        # more realistic, with replica
         rng = Random(1)
-        l = LSMTree(self.dir.name)
+        l = LSMTree(self.dir.name, replica=self.replica)
         n_items = 100
         n_iter = 1_000_000
 
@@ -87,9 +91,10 @@ class TestLSMTree(unittest.TestCase):
 
             l.set(rand_key, rand_value)
 
-        # also test a reset here
+        # also test with a full reset here
         l.close()
-        l = LSMTree(self.dir.name)
+        shutil.rmtree(self.dir.name)
+        l = LSMTree(self.dir.name, replica=self.replica)
 
         for k, v in dict.items():
             self.assertEqual(v, l.get(k))
@@ -134,6 +139,18 @@ class TestLSMTree(unittest.TestCase):
         self.assertEqual(l2.get(b'c'), b'3')
 
         l2.close()
+
+    def test_remote(self):
+        l = LSMTree(self.dir.name, replica=self.replica)
+        l.set(b'a', b'1')
+        l.set(b'b', b'2')
+        l.close()
+        shutil.rmtree(self.dir.name)
+
+        l = LSMTree(self.dir.name, replica=self.replica)
+        self.assertEqual(l.get(b'a'), b'1')
+        self.assertEqual(l.get(b'b'), b'2')
+        l.close()
 
 
 if __name__ == "__main__":

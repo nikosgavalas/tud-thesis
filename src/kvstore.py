@@ -13,9 +13,13 @@ MAX_KEY_LENGTH = 256  # maximum values encodable with one byte
 MAX_VALUE_LENGTH = 256
 
 class KVStore():
-    def __init__(self, data_dir='./data'):
+    def __init__(self, data_dir='./data', replica=None):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
+
+        self.replica = replica
+        if self.replica:
+            self.replica.restore()
 
         self.metadata = {}
         self.metadata_path = self.data_dir / 'metadata'

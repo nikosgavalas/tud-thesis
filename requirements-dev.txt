@@ -1,3 +1,4 @@
 -r requirements.txt
 pandas==1.5.3
 tqdm==4.65.0
+minio==7.1.14

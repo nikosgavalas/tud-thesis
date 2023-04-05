@@ -4,6 +4,12 @@ data/
 data_test/
 benchmark_data_*
 .idea
+
+*.key
+
 tmp.py
 tmp.txt
 *.csv
+.ipynb_checkpoints
+proj.ipynb
+ht09_contact.txt
