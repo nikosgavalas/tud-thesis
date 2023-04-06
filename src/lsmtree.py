@@ -110,9 +110,6 @@ class LSMTree(KVStore):
             # normally I would allocate a new memtable here so that writes can continue there
             # and then give the flushing of the old memtable to a background thread
             self.flush_memtable()
-
-            if len(self.levels[0]) > self.max_runs_per_level:  # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the first level
-                self.merge(0)
         else:
             # write to wal
             self._write_kv_pair(self.wal_file, key, value)
@@ -246,3 +243,7 @@ class LSMTree(KVStore):
         # reset WAL
         self.wal_file.close()
         self.wal_file = self.wal_path.open('wb')
+
+        # trigger merge if exceeding the runs per level
+        if len(self.levels[0]) > self.max_runs_per_level:  # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the first level
+            self.merge(0)
