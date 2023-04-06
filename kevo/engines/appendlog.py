@@ -1,7 +1,7 @@
 from typing import Optional
 from collections import namedtuple
 
-from kevo.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
+from kevo.engines.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 from kevo.replication import Replica
 
 

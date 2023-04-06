@@ -4,11 +4,10 @@ import shutil
 from pathlib import Path
 
 # make it runnable from the root level
-sys.path.append('.')
+sys.path.append('')
 
-from kevo.lsmtree import LSMTree
-from kevo.replication import PathReplica, MinioReplica
-from fuzzy import FuzzyTester
+from kevo import LSMTree, PathReplica
+from fuzzytester import FuzzyTester
 
 
 class TestLSMTree(unittest.TestCase, FuzzyTester):

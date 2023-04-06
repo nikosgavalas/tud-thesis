@@ -1,7 +1,7 @@
 import unittest
 
 from random import Random
-from kevo.fence import FencePointers
+from kevo.common import FencePointers
 
 
 class TestFencePointers(unittest.TestCase):

@@ -2,9 +2,9 @@ import sys
 import unittest
 from random import Random
 
-sys.path.append('.')
+sys.path.append('')
 
-from kevo.hashindex import HashIndex
+from kevo.common import HashIndex
 
 
 class TestHashIndex(unittest.TestCase):

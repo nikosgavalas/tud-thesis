@@ -8,9 +8,8 @@ from collections import namedtuple
 
 from sortedcontainers import SortedDict
 
-from kevo.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
-from kevo.bloom import BloomFilter
-from kevo.fence import FencePointers
+from kevo.engines.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
+from kevo.common import BloomFilter, FencePointers
 from kevo.replication import Replica
 
 

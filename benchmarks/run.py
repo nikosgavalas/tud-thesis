@@ -7,9 +7,9 @@ sys.path.append('.')  # make it runnable from the top level
 import pandas as pd
 from tqdm import tqdm
 
-from kevo.lsmtree import LSMTree
-from kevo.hybridlog import HybridLog
-from kevo.appendlog import AppendLog
+from kevo.engines.lsmtree import LSMTree
+from kevo.engines.hybridlog import HybridLog
+from kevo.engines.appendlog import AppendLog
 
 from benchmarks.distributions import Uniform, Zipfian, HotSet
 from benchmarks.timer import Timer

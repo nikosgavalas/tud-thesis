@@ -3,9 +3,7 @@ import csv
 import signal
 from argparse import ArgumentParser
 
-from kevo.lsmtree import LSMTree
-from kevo.hybridlog import HybridLog
-from kevo.appendlog import AppendLog
+from kevo.engines import LSMTree, HybridLog, AppendLog
 
 
 def write_exit_msg():

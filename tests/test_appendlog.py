@@ -4,11 +4,10 @@ import shutil
 from pathlib import Path
 
 # make it runnable from the root level
-sys.path.append('.')
+sys.path.append('')
 
-from kevo.appendlog import AppendLog
-from kevo.replication import PathReplica, MinioReplica
-from fuzzy import FuzzyTester
+from kevo import AppendLog, PathReplica
+from fuzzytester import FuzzyTester
 
 
 class TestAppendLog(unittest.TestCase, FuzzyTester):

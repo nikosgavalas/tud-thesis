@@ -1,7 +1,7 @@
 import unittest
 from random import Random
 
-from kevo.bloom import BloomFilter
+from kevo.common import BloomFilter
 
 
 class TestBloomFilter(unittest.TestCase):

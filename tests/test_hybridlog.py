@@ -5,11 +5,10 @@ from random import Random
 from pathlib import Path
 
 # make it runnable from the root level
-sys.path.append('.')
+sys.path.append('')
 
-from kevo.hybridlog import HybridLog
-from kevo.replication import PathReplica, MinioReplica
-from fuzzy import FuzzyTester
+from kevo import HybridLog, PathReplica
+from fuzzytester import FuzzyTester
 
 
 class TestHybridLog(unittest.TestCase, FuzzyTester):

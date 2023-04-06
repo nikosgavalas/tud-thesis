@@ -1,9 +1,9 @@
 import sys
 import unittest
 
-sys.path.append('.')
+sys.path.append('')
 
-from kevo.ringbuffer import RingBuffer
+from kevo.common import RingBuffer
 
 
 class TestRingBuffer(unittest.TestCase):

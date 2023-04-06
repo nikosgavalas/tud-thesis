@@ -39,9 +39,9 @@ removed from the db. well, TODO.
 from typing import Optional
 import struct
 
-from kevo.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
-from kevo.hashindex import HashIndex
-from kevo.ringbuffer import RingBuffer
+from kevo.engines.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
+from kevo.common.hashindex import HashIndex
+from kevo.common.ringbuffer import RingBuffer
 from kevo.replication import Replica
 
 
