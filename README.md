@@ -17,7 +17,7 @@ Python 3.11, `pip install -r requirements.txt`
 
 #### Tests:
 
-`python -m unittest`
+`python -m unittest discover -s test`
 
 #### Benchmarks:
 
@@ -53,6 +53,4 @@ Python 3.11, `pip install -r requirements.txt`
 
 
 #### TODOs
-- Keep files open for reading as I did in appendlog?
-- Integration with minio.
-- asyncio and concurrency control...
+- asyncio and concurrency control

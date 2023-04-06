@@ -143,6 +143,8 @@ def get_kvs(rng, n_items, n_iters, distro, kvlen):
 
 
 def main():
+    # TODO rewrite this horrific code (this was before i realized i can do cls(**args) to instantiate a class...)
+    # see also: https://stackoverflow.com/questions/15211568/how-can-i-make-a-list-of-dictionaries-according-to-the-cartesian-product-of-valu
     seed = 1
     rng = Random(seed)
     base_dir = './benchmark_data_'
