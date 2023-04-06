@@ -1,13 +1,11 @@
-#!/usr/bin/env python
-
 import sys
 import csv
 import signal
 from argparse import ArgumentParser
 
-from src.lsmtree import LSMTree
-from src.hybridlog import HybridLog
-from src.appendlog import AppendLog
+from kevo.lsmtree import LSMTree
+from kevo.hybridlog import HybridLog
+from kevo.appendlog import AppendLog
 
 
 def write_exit_msg():

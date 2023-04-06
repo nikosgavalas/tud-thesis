@@ -8,10 +8,10 @@ from collections import namedtuple
 
 from sortedcontainers import SortedDict
 
-from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
-from src.bloom import BloomFilter
-from src.fence import FencePointers
-from src.replication import Replica
+from kevo.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
+from kevo.bloom import BloomFilter
+from kevo.fence import FencePointers
+from kevo.replication import Replica
 
 
 Run = namedtuple('Run', ['filter', 'pointers'])

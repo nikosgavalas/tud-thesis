@@ -4,6 +4,9 @@ data/
 data_test/
 benchmark_data_*
 .idea
+*.egg-info
+dist
+build
 
 *.key
 

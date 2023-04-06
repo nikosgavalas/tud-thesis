@@ -6,8 +6,8 @@ from pathlib import Path
 # make it runnable from the root level
 sys.path.append('.')
 
-from src.lsmtree import LSMTree
-from src.replication import PathReplica, MinioReplica
+from kevo.lsmtree import LSMTree
+from kevo.replication import PathReplica, MinioReplica
 from fuzzy import FuzzyTester
 
 

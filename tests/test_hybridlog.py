@@ -7,8 +7,8 @@ from pathlib import Path
 # make it runnable from the root level
 sys.path.append('.')
 
-from src.hybridlog import HybridLog
-from src.replication import PathReplica, MinioReplica
+from kevo.hybridlog import HybridLog
+from kevo.replication import PathReplica, MinioReplica
 from fuzzy import FuzzyTester
 
 

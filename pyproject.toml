@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kevo"
+version = "0.0.1"
+authors = [{ name="Nikos Gavalas" }]
+description = "Key-value store with 3 backend engines"
+readme = "README.md"
+requires-python = ">=3.11"
+#license = { file = "LICENCE" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+keywords = ["key-value", "store"]
+dependencies = [
+    'sortedcontainers >= 2.4.0, < 3',
+    'bitarray >= 2.6.2, < 3',
+    'mmh3 >= 3.0.0, < 4',
+    'minio >= 7.1.14, < 8',
+]
+
+[project.optional-dependencies]
+dev = ["tqdm>=4.65.0, <5"]
+
+[project.scripts]
+kevo = "kevo.cli:main"
+
+[project.urls]
+"Homepage" = "https://github.com/nikosgavalas/kvstore"

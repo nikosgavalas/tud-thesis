@@ -2,9 +2,9 @@ import shutil
 from random import Random
 from typing import Type, Any, Optional
 
-from src.appendlog import AppendLog
-from src.hybridlog import HybridLog
-from src.lsmtree import LSMTree
+from kevo.appendlog import AppendLog
+from kevo.hybridlog import HybridLog
+from kevo.lsmtree import LSMTree
 
 
 class FuzzyTester():

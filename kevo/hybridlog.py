@@ -39,10 +39,10 @@ removed from the db. well, TODO.
 from typing import Optional
 import struct
 
-from src.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
-from src.hashindex import HashIndex
-from src.ringbuffer import RingBuffer
-from src.replication import Replica
+from kevo.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
+from kevo.hashindex import HashIndex
+from kevo.ringbuffer import RingBuffer
+from kevo.replication import Replica
 
 
 class HybridLog(KVStore):

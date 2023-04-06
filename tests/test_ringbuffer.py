@@ -3,7 +3,7 @@ import unittest
 
 sys.path.append('.')
 
-from src.ringbuffer import RingBuffer
+from kevo.ringbuffer import RingBuffer
 
 
 class TestRingBuffer(unittest.TestCase):

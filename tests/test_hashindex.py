@@ -4,7 +4,7 @@ from random import Random
 
 sys.path.append('.')
 
-from src.hashindex import HashIndex
+from kevo.hashindex import HashIndex
 
 
 class TestHashIndex(unittest.TestCase):
