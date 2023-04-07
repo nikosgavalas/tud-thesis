@@ -1,13 +1,9 @@
-import sys
-import unittest
 import shutil
+import unittest
 from pathlib import Path
 
-# make it runnable from the root level
-sys.path.append('')
-
-from kevo import LSMTree, PathReplica
 from fuzzytester import FuzzyTester
+from kevo import LSMTree, PathReplica
 
 
 class TestLSMTree(unittest.TestCase, FuzzyTester):
@@ -35,17 +31,25 @@ class TestLSMTree(unittest.TestCase, FuzzyTester):
         self.assertEqual(l.get(b'cc'), b'cici345')
 
         l.close()
-    
+
     def test_fuzzy_1(self):
         # highly granular, fishing for edgecases
-        self.fuzzy_test(LSMTree, args={'data_dir': self.dir.name, 'max_runs_per_level': 2, 'density_factor': 3, 'memtable_bytes_limit': 10},
-            key_len_range=(1, 10), val_len_range=(0, 13), n_items=10, n_iter=10_000, seeds=[1], test_recovery=False, test_replica=False)
+        self.fuzzy_test(LSMTree, args={'data_dir': self.dir.name, 'max_runs_per_level': 2, 'density_factor': 3,
+                                       'memtable_bytes_limit': 10}, key_len_range=(1, 10), val_len_range=(0, 13),
+                        n_items=10, n_iter=10_000, seeds=[1], test_recovery=False, test_replica=False)
 
     def test_fuzzy_2(self):
         # more realistic, with replica
-        self.fuzzy_test(LSMTree, args={'data_dir': self.dir.name, 'replica':self.replica}, key_len_range=(1, 10),
-            val_len_range=(0, 13), n_items=100, n_iter=1_000_000, seeds=[1], test_recovery=True, test_replica=True
-        )
+        self.fuzzy_test(LSMTree, args={'data_dir': self.dir.name, 'replica': self.replica}, key_len_range=(1, 10),
+                        val_len_range=(0, 13), n_items=100, n_iter=1_000_000, seeds=[1], test_recovery=True,
+                        test_replica=True)
+
+    def test_fuzzy_3(self):
+        # test for large keys/values
+        self.fuzzy_test(LSMTree, args={'data_dir': self.dir.name, 'max_key_len': 100_000, 'max_value_len': 100_000,
+                                       'max_runs_per_level': 2, 'density_factor': 3, 'memtable_bytes_limit': 10},
+                        key_len_range=(1, 100_000), val_len_range=(0, 100_000), n_items=10, n_iter=100, seeds=[1],
+                        test_recovery=False, test_replica=False)
 
     def test_merge(self):
         l = LSMTree(self.dir.name, max_runs_per_level=2, density_factor=3, memtable_bytes_limit=10)
@@ -68,7 +72,7 @@ class TestLSMTree(unittest.TestCase, FuzzyTester):
         self.assertEqual(content, b'\x02a1\x03a11\x02a2\x03a22\x02a3\x03a31\x02a4\x02a4\x02a5\x02a5\x02a6\x02a6')
 
         l.close()
-    
+
     def test_wal(self):
         l1 = LSMTree(self.dir.name)
 

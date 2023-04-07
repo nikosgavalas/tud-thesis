@@ -1,4 +1,4 @@
-'''
+"""
 Key-value store based on Microsoft's FASTER (https://microsoft.github.io/FASTER/docs/td-research-papers/).
 The good thing about this one is that the memory part in front of the file works like a cache, so for some distributions
 of data (like zipfian) it may work really well. However, it sucks for range queries (not that I support those in the LSM
@@ -34,93 +34,86 @@ overhead in the address translations, plus requires extra bookkeeping (persisten
 
 Something I haven't done (iirc in the appendlog implementation as well) is clear the entry from the hash index when it is
 removed from the db. well, TODO.
-'''
+
+Something radical I just did: I completely removed the file offset to LA linear translation, which required me to
+have very small keyval lengths (cause i needed padding and large keyvals would make the disk explode), and just used
+extra memory for the translation by using a dict...
+"""
 
 from typing import Optional
-import struct
 
-from kevo.engines.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
-from kevo.common.hashindex import HashIndex
+# from kevo.common.hashindex import HashIndex
 from kevo.common.ringbuffer import RingBuffer
+from kevo.engines.kvstore import KVStore
 from kevo.replication import Replica
 
 
 class HybridLog(KVStore):
     name = 'HybridLog'
-    def __init__(self, data_dir='./data', max_key_len=4, max_value_len=4, mem_segment_len=2**20, ro_lag_interval=2**10,
-        flush_interval=(4 * 2**10), hash_index='dict', compaction_interval=0, replica: Optional[Replica] = None):
-        self.type = 'hybridlog'
-        super().__init__(data_dir, replica=replica)
 
-        assert 0 < max_key_len <= MAX_KEY_LENGTH
-        assert 0 < max_value_len <= MAX_VALUE_LENGTH
-        assert ro_lag_interval > 0
+    def __init__(self,
+                 data_dir='./data',
+                 max_key_len=255,
+                 max_value_len=255,
+                 mem_segment_len=2 ** 20,
+                 ro_lag_interval=2 ** 10,
+                 flush_interval=(4 * 2 ** 10),
+                 hash_index='dict',
+                 compaction_interval=0,
+                 replica: Optional[Replica] = None):
+        self.type = 'hybridlog'
+        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
+
         assert flush_interval > 0
-        assert compaction_interval >= 0 # if compaction interval is 0, compaction is disabled
+        assert compaction_interval >= 0  # if compaction interval is 0, compaction is disabled
         assert mem_segment_len >= ro_lag_interval + flush_interval
         assert hash_index in ['dict', 'native'], 'hash_index parameter must be either "dict" or "native"'
 
-        self.max_key_len = max_key_len
-        self.max_value_len = max_value_len
         self.ro_lag_interval = ro_lag_interval
         self.flush_interval = flush_interval
         self.compaction_interval = compaction_interval  # in number of flushes
         self.compaction_enabled = compaction_interval > 0
 
         if hash_index == 'native':
-            self.hash_index = HashIndex(n_buckets_power=4, key_len_bits=self.max_key_len*8, value_len_bits=self.max_value_len*8)
+            # TODO
+            # self.hash_index = HashIndex(n_buckets_power=4, key_len_bits=self.max_key_len*8, value_len_bits=self.max_value_len*8)
+            raise NotImplementedError("do not use the native hash index, it currently has a bug, use 'dict' instead")
         else:
             self.hash_index = {}
 
+        self.la_to_file_offset = {}
+
         self.head_offset = 0  # LA > head_offset is in mem
-        self.ro_offset = 0    # in LA > ro_offset we have the mutable region
+        self.ro_offset = 0  # in LA > ro_offset we have the mutable region
         self.tail_offset = 0  # points to the tail of the log, the next free available slot in memory
 
         self.compaction_counter = 0
 
         self.log_path = self.data_dir / 'log'
-        if self.log_path.is_file():
-            with self.log_path.open('rb') as log_file:
+        self.log_path.touch()
+        with self.log_path.open('rb') as log_file:
+            offset = log_file.tell()
+            k, _ = self._read_kv_pair(log_file)
+            while k:
+                self.head_offset += 1
+                self.hash_index[k] = self.head_offset
+                self.la_to_file_offset[self.head_offset] = offset
                 offset = log_file.tell()
                 k, _ = self._read_kv_pair(log_file)
-                self.head_offset += 1
-                while k:
-                    self.hash_index[k] = self.file_offset_to_LA(offset)
-                    offset = log_file.tell()
-                    k, _ = self._read_kv_pair(log_file)
-                    self.head_offset += 1
-            self.ro_offset = self.head_offset
-            self.tail_offset = self.ro_offset
+        self.ro_offset = self.head_offset
+        self.tail_offset = self.ro_offset
+
+        self.rfd = self.log_path.open('rb')
 
         self.memory = RingBuffer(mem_segment_len)
 
     def close(self):
         self.flush(self.tail_offset)  # flush everything
+        self.rfd.close()
         self.save_metadata()
         if self.replica:
             self.replica.put(self.log_path.name)
             self.replica.put(self.metadata_path.name)
-
-    def _read_kv_pair(self, fd, file_offset=None):
-            if not file_offset:
-                file_offset = fd.tell()
-            fd.seek(file_offset)
-            first_byte = fd.read(1)
-            if not first_byte:
-                return EMPTY, EMPTY
-            k_len = struct.unpack('<B', first_byte)[0]
-            k = fd.read(k_len)
-            fd.seek(file_offset + self.max_key_len + 1)  # +1 for the encoding
-            v_len = struct.unpack('<B', fd.read(1))[0]
-            v = fd.read(v_len)
-            fd.seek(file_offset + self.max_key_len + self.max_value_len + 2) # +2 for encoding
-            return k, v
-
-    def _write_kv_pair(self, fd, key, value):
-        fd.write(struct.pack('<B', len(key)))
-        fd.write(key + b'\x00' * (self.max_key_len - len(key)))  # key padded with \x00's
-        fd.write(struct.pack('<B', len(value)))
-        fd.write(value + b'\x00' * (self.max_value_len - len(value)))  # same for value
 
     def __getitem__(self, key):
         return self.get(key)
@@ -129,23 +122,25 @@ class HybridLog(KVStore):
         return self.set(key, value)
 
     def get(self, key: bytes):
-        assert type(key) is bytes and 0 < len(key) <= self.max_key_len
+        assert type(key) is bytes
+        assert 0 < len(key) <= self.max_key_len
 
         if key not in self.hash_index:
-            return EMPTY
+            return KVStore.EMPTY
 
         offset = self.hash_index[key]
         if offset > self.head_offset:
             _, v = self.memory[offset]
             return v
 
-        file_offset = self.LA_to_file_offset(offset)
-        with self.log_path.open('rb') as log_file:
-            _, v = self._read_kv_pair(log_file, file_offset)
-            return v
+        file_offset = self.la_to_file_offset[offset]
+        self.rfd.seek(file_offset)
+        _, v = self._read_kv_pair(self.rfd)
+        return v
 
-    def set(self, key: bytes, value: bytes = EMPTY):
-        assert type(key) is bytes and type(value) is bytes and 0 < len(key) <= self.max_key_len and len(value) <= self.max_value_len
+    def set(self, key: bytes, value: bytes = KVStore.EMPTY):
+        assert type(key) is bytes and type(value) is bytes
+        assert 0 < len(key) <= self.max_key_len and len(value) <= self.max_value_len
 
         if self.memory.is_full():
             self.flush(self.ro_offset)
@@ -173,18 +168,17 @@ class HybridLog(KVStore):
                 key, value = self.memory.pop()
                 write_offset = log_file.tell()
                 self.head_offset += 1
-                if self.compaction_enabled:
-                    if self.hash_index[key] != self.head_offset:  # if is not the most recent record, drop it, like we do with the file compaction
-                        continue
-                    self.hash_index[key] = self.file_offset_to_LA(write_offset)
-                self._write_kv_pair(log_file, key, value)
+                # if is not the most recent record, drop it, like we do with the file compaction
+                if self.hash_index[key] == self.head_offset:
+                    self._write_kv_pair(log_file, key, value)
+                    self.la_to_file_offset[self.head_offset] = write_offset
 
         if self.replica and not self.compaction_enabled:
             self.replica.put(self.log_path.name)
 
         if self.compaction_enabled:
             self.compaction_counter += 1
-            if self.compaction_counter == self.compaction_interval:
+            if self.compaction_counter >= self.compaction_interval:
                 self.compaction()
                 # if compaction is enabled, wait to sync to replica store *after* the compaction
                 if self.replica and self.compaction_enabled:
@@ -192,28 +186,27 @@ class HybridLog(KVStore):
 
     def compaction(self):
         compacted_log_path = self.log_path.with_suffix('.tmp')
-        #new_hash_index = {} # TODO i can copy the index here and keep the old one for as long as the compaction is running to enable reads concurrently
+        # NOTE i can copy the index here and keep the old one for as long as the compaction is running to enable reads
+        # concurrently
 
-        with self.log_path.open('rb') as log_file, compacted_log_path.open('ab') as compacted_log_file:
-            read_offset = log_file.tell()
-            k, v = self._read_kv_pair(log_file)
+        with compacted_log_path.open('ab') as compacted_log_file:
+            read_offset = self.rfd.tell()
+            k, v = self._read_kv_pair(self.rfd)
             while k:
-                if self.file_offset_to_LA(read_offset) == self.hash_index[k]: # not checking if k in index as it is for sure (i never remove keys from the index so far)
+                # not checking if k in index as it is for sure (i never remove keys from the index so far)
+                la = self.hash_index[k]
+                # if the record lies on disk and is the most recent one:
+                if la <= self.head_offset and self.la_to_file_offset[la] == read_offset:
                     write_offset = compacted_log_file.tell()
                     self._write_kv_pair(compacted_log_file, k, v)
-                    self.hash_index[k] = self.file_offset_to_LA(write_offset) #new_hash_index[k] = write_offset # see TODO above
-                read_offset = log_file.tell()
-                k, v = self._read_kv_pair(log_file)
+                    self.la_to_file_offset[la] = write_offset
+                read_offset = self.rfd.tell()
+                k, v = self._read_kv_pair(self.rfd)
 
+        self.rfd.close()
         # rename the file back
         compacted_log_path.rename(compacted_log_path.with_suffix(''))
-        # swap the index with the new one
-        #self.hash_index = new_hash_index # see TODO above
+        # get a new read fd
+        self.rfd = self.log_path.open('rb')
         # reset the compaction counter
         self.compaction_counter = 0
-
-    def file_offset_to_LA(self, file_offset):
-        return (file_offset // (self.max_key_len + self.max_value_len + 2)) + 1
-
-    def LA_to_file_offset(self, la):
-        return (la - 1) * (self.max_key_len + self.max_value_len + 2)  # +2 for the encoding of the lengths of keys and values

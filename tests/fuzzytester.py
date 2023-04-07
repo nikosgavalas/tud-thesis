@@ -10,15 +10,15 @@ class FuzzyTester():
         pass
 
     def fuzzy_test(self,
-        engine_cls: Type[AppendLog] | Type[HybridLog] | Type[LSMTree],
-        args: dict[str, Any],
-        key_len_range: tuple[int, int] = (1, 10),
-        val_len_range: tuple[int, int] = (0, 10),
-        n_items: int = 100,
-        n_iter: int = 1_000_000,
-        seeds: Optional[list[int]] = None,
-        test_recovery: bool = True,
-        test_replica: bool = True):
+                   engine_cls: Type[AppendLog] | Type[HybridLog] | Type[LSMTree],
+                   args: dict[str, Any],
+                   key_len_range: tuple[int, int] = (1, 10),
+                   val_len_range: tuple[int, int] = (0, 10),
+                   n_items: int = 100,
+                   n_iter: int = 1_000_000,
+                   seeds: Optional[list[int]] = None,
+                   test_recovery: bool = True,
+                   test_replica: bool = True):
         '''
         Choose `n_items` keys with lengths in the range `key_range` and `n_items` values with lengths in the range `val_range`
         Then, perform `n_iter` writes to the engine and a python dict.
@@ -29,6 +29,8 @@ class FuzzyTester():
         '''
         if not seeds:
             seeds = [1]
+        # remove duplicate seeds
+        seeds = list(set(seeds))
         for seed in seeds:
             rng = Random(seed)
 
@@ -61,3 +63,8 @@ class FuzzyTester():
                 self.assertEqual(v, engine.get(k))
 
             engine.close()
+            # for all iterations (for every seed), clear the data dir, except for the last one, which will be cleared
+            # by the test teardown method
+            if seed != seeds[-1]:
+                shutil.rmtree(engine.data_dir.name)
+                # NOTE i should also destroy the replica here if any

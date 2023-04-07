@@ -1,21 +1,35 @@
-'''
+"""
 Base class for IndexedLog and LSMTree classes.
-'''
+"""
 
 import json
-import struct
 from pathlib import Path
 
 
-EMPTY = b''
-# TODO maybe bump these up to 65536? the drawback is that I'll need two bytes for len(key) and len(value) in the binary encoding
-MAX_KEY_LENGTH = 256  # maximum values encodable with one byte
-MAX_VALUE_LENGTH = 256
+def bytes_needed_to_encode_len(length):
+    i = 0
+    while 2 ** (i * 8) <= length:
+        i += 1
+    return i
 
-class KVStore():
-    def __init__(self, data_dir='./data', replica=None):
+
+class KVStore:
+    EMPTY = b''
+
+    def __init__(self,
+                 data_dir='./data',
+                 max_key_len=255,
+                 max_value_len=255,
+                 replica=None):
+
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
+
+        self.max_key_len = max_key_len
+        self.max_value_len = max_value_len
+
+        self.key_enc_len = bytes_needed_to_encode_len(self.max_key_len)
+        self.val_enc_len = bytes_needed_to_encode_len(self.max_value_len)
 
         self.replica = replica
         if self.replica:
@@ -39,19 +53,19 @@ class KVStore():
             metadata_file.write(json.dumps(self.metadata))
 
     def _read_kv_pair(self, fd):
-        first_byte = fd.read(1)
-        if not first_byte:
-            return EMPTY, EMPTY
-        key_len = struct.unpack('<B', first_byte)[0]
+        first_bytes = fd.read(self.key_enc_len)
+        if not first_bytes:
+            return KVStore.EMPTY, KVStore.EMPTY
+        key_len = int.from_bytes(first_bytes, byteorder='little')
         key = fd.read(key_len)
-        val_len = struct.unpack('<B', fd.read(1))[0]
+        val_len = int.from_bytes(fd.read(self.val_enc_len), byteorder='little')
         value = fd.read(val_len)
         return key, value
 
     def _write_kv_pair(self, fd, key, value, flush=False):
-        fd.write(struct.pack('<B', len(key)))
+        fd.write(len(key).to_bytes(self.key_enc_len, byteorder='little'))
         fd.write(key)
-        fd.write(struct.pack('<B', len(value)))
+        fd.write(len(value).to_bytes(self.val_enc_len, byteorder='little'))
         fd.write(value)
         if flush:
             fd.flush()

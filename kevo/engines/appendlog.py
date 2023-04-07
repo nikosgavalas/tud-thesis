@@ -1,17 +1,24 @@
 from typing import Optional
 from collections import namedtuple
 
-from kevo.engines.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
+from kevo.engines.kvstore import KVStore
 from kevo.replication import Replica
 
 
 Record = namedtuple('Record', ['level', 'run', 'offset'])
 
+
 class AppendLog(KVStore):
     name = 'AppendLog'
-    def __init__(self, data_dir='./data', max_runs_per_level=3, threshold=4_000_000, replica: Optional[Replica] = None):
+    def __init__(self,
+                 data_dir='./data',
+                 max_key_len=255,
+                 max_value_len=255,
+                 max_runs_per_level=3,
+                 threshold=4_000_000,
+                 replica: Optional[Replica] = None):
         self.type = 'appendlog'
-        super().__init__(data_dir, replica=replica)
+        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
 
         # about state:
         # the state here, runs_per_level, contrary to the LSMTree implementation, keeps track
@@ -23,7 +30,8 @@ class AppendLog(KVStore):
         # one more thing about the state i just realized: only runs in the first level need compaction.
         # the merged files in greater levels are already compacted in a sense
 
-        # TODO i may loose unflushed records, I should check how I can turn off buffering and flush always
+        # I enabled flushing always. it's slower but it's safer and this class requires too (while for the other is
+        # optional).
         # also, I can detect if a record is malformed by checking if the len(key) and len(value) are equal
         # to their encoding byte when reading
 
@@ -82,10 +90,10 @@ class AppendLog(KVStore):
         return self.set(key, value)
 
     def get(self, key: bytes):
-        assert type(key) is bytes and 0 < len(key) <= MAX_KEY_LENGTH
+        assert type(key) is bytes and 0 < len(key) <= self.max_key_len
 
         if key not in self.hash_index:
-            return EMPTY
+            return KVStore.EMPTY
 
         record = self.hash_index[key]
 
@@ -95,8 +103,9 @@ class AppendLog(KVStore):
         assert k == key
         return v
 
-    def set(self, key: bytes, value: bytes = EMPTY):
-        assert type(key) is bytes and type(value) is bytes and 0 < len(key) <= MAX_KEY_LENGTH and len(value) <= MAX_VALUE_LENGTH
+    def set(self, key: bytes, value: bytes = KVStore.EMPTY):
+        assert type(key) is bytes and type(value) is bytes
+        assert 0 < len(key) <= self.max_key_len and len(value) <= self.max_value_len
 
         if not value and key in self.hash_index:
             del self.hash_index[key]

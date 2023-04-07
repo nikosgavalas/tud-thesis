@@ -1,8 +1,5 @@
-import sys
 import unittest
 from random import Random
-
-sys.path.append('')
 
 from kevo.common import HashIndex
 

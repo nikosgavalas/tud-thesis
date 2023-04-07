@@ -1,27 +1,34 @@
-'''
+"""
 LSM Tree with size-tiered compaction (write-optimized)
 TODO: consider using mmap for the files
-'''
+"""
 
-from typing import Optional
 from collections import namedtuple
+from typing import Optional
 
 from sortedcontainers import SortedDict
 
-from kevo.engines.kvstore import KVStore, EMPTY, MAX_KEY_LENGTH, MAX_VALUE_LENGTH
 from kevo.common import BloomFilter, FencePointers
+from kevo.engines.kvstore import KVStore
 from kevo.replication import Replica
-
 
 Run = namedtuple('Run', ['filter', 'pointers'])
 
 
 class LSMTree(KVStore):
     name = 'LSMTree'
+
     # NOTE the fence pointers can be used to organize data into compressible blocks
-    def __init__(self, data_dir='./data', max_runs_per_level=3, density_factor=20, memtable_bytes_limit=1_000_000, replica: Optional[Replica] = None):
+    def __init__(self,
+                 data_dir='./data',
+                 max_key_len=255,
+                 max_value_len=255,
+                 max_runs_per_level=3,
+                 density_factor=20,
+                 memtable_bytes_limit=1_000_000,
+                 replica: Optional[Replica] = None):
         self.type = 'lsmtree'
-        super().__init__(data_dir=data_dir, replica=replica)
+        super().__init__(data_dir=data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
 
         if 'runs_per_level' not in self.metadata:
             self.metadata['runs_per_level'] = []
@@ -42,7 +49,8 @@ class LSMTree(KVStore):
             with self.wal_path.open('rb') as wal_file:
                 k, v = self._read_kv_pair(wal_file)
                 while k:
-                    self.memtable[k] = v  # write the value to the memtable directly, no checks for amount of bytes etc.
+                    # write the value to the memtable directly, no checks for amount of bytes etc.
+                    self.memtable[k] = v
                     k, v = self._read_kv_pair(wal_file)
         self.wal_file = self.wal_path.open('ab')
 
@@ -62,7 +70,7 @@ class LSMTree(KVStore):
                 filter = BloomFilter(from_str=data)
 
                 self.levels[level_idx].append(Run(filter, pointers))
-    
+
     def close(self):
         # close the wal file (if not closed, it may not flush)
         self.wal_file.close()
@@ -78,7 +86,8 @@ class LSMTree(KVStore):
         return self.set(key, value)
 
     def get(self, key: bytes):
-        assert type(key) is bytes and len(key) < MAX_KEY_LENGTH
+        assert type(key) is bytes
+        assert len(key) < self.max_key_len
 
         if key in self.memtable:
             return self.memtable[key]
@@ -86,7 +95,8 @@ class LSMTree(KVStore):
         for level_idx, level in enumerate(self.levels):
             for i, run in reversed(list(enumerate(level))):
                 if key in run.filter:
-                    idx = run.pointers.bisect(key) - 1  # -1 because I want the index of the item on the left
+                    # bisect -1 because I want the index of the item on the left
+                    idx = run.pointers.bisect(key) - 1
                     if idx < 0:
                         idx = 0
                     _, offset = run.pointers.peekitem(idx)
@@ -97,12 +107,15 @@ class LSMTree(KVStore):
                             if read_key == key:
                                 return read_value
 
-        return EMPTY
+        return KVStore.EMPTY
 
-    def set(self, key: bytes, value: bytes = EMPTY):
-        assert type(key) is bytes and type(value) is bytes and 0 < len(key) < MAX_KEY_LENGTH and len(value) < MAX_VALUE_LENGTH
+    def set(self, key: bytes, value: bytes = KVStore.EMPTY):
+        assert type(key) is bytes and type(value) is bytes
+        assert 0 < len(key) < self.max_key_len and len(value) < self.max_value_len
 
-        self.memtable[key] = value  # NOTE maybe i should write after the flush? cause this way the limit is not a hard limit, it may be passed by up to 255 bytes
+        # NOTE maybe i should write after the flush?
+        # cause this way the limit is not a hard limit, it may be passed by up to 255 bytes
+        self.memtable[key] = value
         new_bytes_count = self.memtable_bytes_count + len(key) + len(value)
 
         if new_bytes_count > self.memtable_bytes_limit:
@@ -121,7 +134,8 @@ class LSMTree(KVStore):
         next_level = self.levels[level_idx + 1]
 
         fence_pointers = FencePointers(self.density_factor)
-        filter = BloomFilter(sum([run.filter.est_num_items for run in level]))  # I can replace with an actual accurate count but I don't think it's worth it, it's an estimate anyway
+        # I can replace with an actual accurate count but I don't think it's worth it, it's an estimate anyway
+        filter = BloomFilter(sum([run.filter.est_num_items for run in level]))
 
         fds, keys, values, is_empty = [], [], [], []
         for i, _ in enumerate(level):
@@ -131,11 +145,12 @@ class LSMTree(KVStore):
             keys.append(k)
             values.append(v)
             is_empty.append(True if not k else False)
-        
+
         with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run').open('wb') as run_file:
             while not all(is_empty):
                 argmin_key = len(level) - 1
-                # correctly initialize the argmin_key (cause empty key b'' would make it instantly the argmin_key in the next for loop which we don't want)
+                # correctly initialize the argmin_key (cause empty key b'' would make it instantly the argmin_key in
+                # the next for loop which we don't want)
                 for i in reversed(range(len(level))):
                     if not is_empty[i]:
                         argmin_key = i
@@ -144,7 +159,8 @@ class LSMTree(KVStore):
                     if not is_empty[i] and keys[i] < keys[argmin_key]:
                         argmin_key = i
 
-                if values[argmin_key]:  # assumption: empty value == deleted item, so if empty I am writing nothing
+                # assumption: empty value == deleted item, so if empty I am writing nothing
+                if values[argmin_key]:
                     fence_pointers.add(keys[argmin_key], run_file.tell())
                     self._write_kv_pair(run_file, keys[argmin_key], values[argmin_key])
                     filter.add(keys[argmin_key])
@@ -157,8 +173,10 @@ class LSMTree(KVStore):
                     is_empty[argmin_key] = True
 
                 # skip duplicates
-                for i in reversed(range(argmin_key + 1)): # + 1 cause inclusive range
-                    while not is_empty[i] and written_key == keys[i]:  # if it's the same key, read one more pair to skip it
+                # + 1 cause inclusive range
+                for i in reversed(range(argmin_key + 1)):
+                    # if it's the same key, read one more pair to skip it
+                    while not is_empty[i] and written_key == keys[i]:
                         keys[i], values[i] = self._read_kv_pair(fds[i])
                         if not keys[i]:
                             is_empty[i] = True
@@ -190,7 +208,8 @@ class LSMTree(KVStore):
 
         # sync with remote
         if self.replica:
-            self.replica.put(f'L{level_idx + 1}.{len(next_level) - 1}.run') # -1 cause next_level was appended to previously
+            # -1 cause next_level was appended to previously
+            self.replica.put( f'L{level_idx + 1}.{len(next_level) - 1}.run')
             self.replica.put(f'L{level_idx + 1}.{len(next_level) - 1}.pointers')
             self.replica.put(f'L{level_idx + 1}.{len(next_level) - 1}.filter')
             for i, _ in enumerate(level):
@@ -219,7 +238,7 @@ class LSMTree(KVStore):
                 fence_pointers.add(k, run_file.tell())
                 self._write_kv_pair(run_file, k, v)
                 filter.add(k)
- 
+
         self.memtable_bytes_count = 0
 
         self.levels[flush_level].append(Run(filter, fence_pointers))
@@ -244,5 +263,7 @@ class LSMTree(KVStore):
         self.wal_file = self.wal_path.open('wb')
 
         # trigger merge if exceeding the runs per level
-        if len(self.levels[0]) > self.max_runs_per_level:  # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the first level
+        # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the
+        # first level
+        if len(self.levels[0]) > self.max_runs_per_level:
             self.merge(0)
