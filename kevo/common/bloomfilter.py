@@ -1,6 +1,7 @@
 # I wrote this because pybloomfiltermmap3 does not work with python 3.11 yet
 # https://en.wikipedia.org/wiki/Bloom_filter#Probability_of_false_positives.
 
+from sys import getsizeof
 import json
 from base64 import b64encode, b64decode
 from math import log, ceil, floor
@@ -58,3 +59,6 @@ class BloomFilter:
 
     def __str__(self) -> str:
         return self.serialize()
+
+    def __sizeof__(self):
+        return getsizeof(self.bitarray)

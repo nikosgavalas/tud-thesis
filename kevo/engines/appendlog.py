@@ -1,3 +1,4 @@
+from sys import getsizeof
 from typing import Optional
 from collections import namedtuple
 
@@ -90,7 +91,8 @@ class AppendLog(KVStore):
         return self.set(key, value)
 
     def get(self, key: bytes):
-        assert type(key) is bytes and 0 < len(key) <= self.max_key_len
+        assert type(key) is bytes
+        assert 0 < len(key) <= self.max_key_len
 
         if key not in self.hash_index:
             return KVStore.EMPTY
@@ -173,3 +175,6 @@ class AppendLog(KVStore):
         # merge recursively
         if self.levels[next_level] > self.max_runs_per_level:
             self.merge(next_level)
+
+    def __sizeof__(self):
+        return getsizeof(self.hash_index)

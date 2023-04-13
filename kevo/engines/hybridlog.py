@@ -40,6 +40,7 @@ have very small keyval lengths (cause i needed padding and large keyvals would m
 extra memory for the translation by using a dict...
 """
 
+from sys import getsizeof
 from typing import Optional
 
 # from kevo.common.hashindex import HashIndex
@@ -210,3 +211,6 @@ class HybridLog(KVStore):
         self.rfd = self.log_path.open('rb')
         # reset the compaction counter
         self.compaction_counter = 0
+
+    def __sizeof__(self):
+        return getsizeof(self.hash_index) + getsizeof(self.la_to_file_offset) + getsizeof(self.memory)

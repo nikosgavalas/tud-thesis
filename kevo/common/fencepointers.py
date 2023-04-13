@@ -4,6 +4,7 @@ A better implementation would be: two arrays (one for keys one for values) so th
 TODO rebuilding from string could be done linearly if the serialization is sorted, right now the sorteddict is being rebuilt from scratch so that should be fixed
 '''
 
+from sys import getsizeof
 import json
 from base64 import b64encode, b64decode
 
@@ -51,3 +52,6 @@ class FencePointers:
 
     def __str__(self) -> str:
         return self.serialize()
+
+    def __sizeof__(self):
+        return sum((getsizeof(k) + getsizeof(v) for k, v in self.pointers.items()))

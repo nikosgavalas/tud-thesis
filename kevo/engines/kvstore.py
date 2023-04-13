@@ -83,5 +83,8 @@ class KVStore:
     def set(self, key: bytes, value: bytes):
         raise NotImplementedError('')
 
+    def __sizeof__(self):
+        raise NotImplementedError('')
+
     def close(self):
         raise NotImplementedError('')

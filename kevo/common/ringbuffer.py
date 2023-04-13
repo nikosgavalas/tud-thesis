@@ -1,3 +1,6 @@
+from sys import getsizeof
+
+
 class RingBuffer:
     '''
     __getitem__(), __setitem__() here are specific to my use case (to this
@@ -43,3 +46,6 @@ class RingBuffer:
             raise BufferError('buffer empty')
         self.read_idx += 1
         return self.buffer[self.read_idx % self.capacity]
+
+    def __sizeof__(self):
+        return getsizeof(self.buffer)

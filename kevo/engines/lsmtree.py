@@ -3,6 +3,7 @@ LSM Tree with size-tiered compaction (write-optimized)
 TODO: consider using mmap for the files
 """
 
+from sys import getsizeof
 from collections import namedtuple
 from typing import Optional
 
@@ -87,7 +88,7 @@ class LSMTree(KVStore):
 
     def get(self, key: bytes):
         assert type(key) is bytes
-        assert len(key) < self.max_key_len
+        assert 0 < len(key) <= self.max_key_len
 
         if key in self.memtable:
             return self.memtable[key]
@@ -111,7 +112,7 @@ class LSMTree(KVStore):
 
     def set(self, key: bytes, value: bytes = KVStore.EMPTY):
         assert type(key) is bytes and type(value) is bytes
-        assert 0 < len(key) < self.max_key_len and len(value) < self.max_value_len
+        assert 0 < len(key) <= self.max_key_len and len(value) <= self.max_value_len
 
         # NOTE maybe i should write after the flush?
         # cause this way the limit is not a hard limit, it may be passed by up to 255 bytes
@@ -267,3 +268,9 @@ class LSMTree(KVStore):
         # first level
         if len(self.levels[0]) > self.max_runs_per_level:
             self.merge(0)
+
+    def __sizeof__(self):
+        memtable_size = sum((getsizeof(k) + getsizeof(v) for k, v in self.memtable.items()))
+        bloom_filters_size = sum((getsizeof(run.filter) for level in self.levels for run in level))
+        fence_pointers_size = sum((getsizeof(run.pointers) for level in self.levels for run in level))
+        return memtable_size + bloom_filters_size + fence_pointers_size

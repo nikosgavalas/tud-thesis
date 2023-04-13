@@ -5,6 +5,6 @@ FROM python:3.11
 
 WORKDIR /tmp
 
-RUN pip install .
+RUN pip install '.[benchmarks]'
 
 ENTRYPOINT ["python"]
