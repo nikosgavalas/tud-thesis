@@ -11,6 +11,7 @@ Record = namedtuple('Record', ['level', 'run', 'offset'])
 
 class AppendLog(KVStore):
     name = 'AppendLog'
+
     def __init__(self,
                  data_dir='./data',
                  max_key_len=255,

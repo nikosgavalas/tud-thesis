@@ -33,8 +33,9 @@ def main():
     engines = [LSMTree, HybridLog, AppendLog]
     engines_args = make_engines_args(experiment_id, base_dir)
 
-    for klen, vlen, n_items, n_ops in tqdm(list(itertools.product(klens, vlens, n_items_list, n_ops_list))):
-        for distro_cl, distro_args in zip(distros, distros_args):
+    for klen, vlen, n_items, n_ops in tqdm(list(itertools.product(klens, vlens, n_items_list, n_ops_list)),
+                                           desc='Global', position=0):
+        for distro_cl, distro_args in tqdm(zip(distros, distros_args), desc=' Distros', position=1, leave=False):
             # overwrite distro args
             distro_args['items'] = [n_items]
             for distro_comb in explode(distro_args):
@@ -45,7 +46,7 @@ def main():
                 keys = [keys_set[next(distro)] for _ in range(n_ops)]
                 vals = [vals_set[next(distro)] for _ in range(n_ops)]
 
-                for engine, engine_args in zip(engines, engines_args):
+                for engine, engine_args in tqdm(zip(engines, engines_args), desc='  Engines', position=2, leave=False):
                     # overwrite distro args
                     engine_args['max_key_len'] = [klen]
                     engine_args['max_value_len'] = [vlen]
