@@ -1,35 +1,71 @@
-# docker run --rm --name minio -p 9000:9000 -p 9001:9001 -e "MINIO_ROOT_USER=minio99" -e "MINIO_ROOT_PASSWORD=minio123" quay.io/minio/minio server /data --console-address ":9001"
-
 import os
 import shutil
+from collections import defaultdict
 
 from minio import Minio
-# from minio.error import S3Error
 
 
 # abstract class
-class Replica():
+class Replica:
     def __init__(self, src_dir_path):
         self.src_dir_path = src_dir_path
 
     def put(self, filename):
         raise NotImplementedError
 
-    def get(self, filename):
+    def get(self, filename, version=None):
         raise NotImplementedError
 
-    def rm(self, filename):
+    def gc(self):
         raise NotImplementedError
 
-    def restore(self):
+    def restore(self, max_per_level, version=None):
         raise NotImplementedError
 
     def destroy(self):
         raise NotImplementedError
 
 
+def parse_file_name(raw_file_name):
+    s = raw_file_name.split('-')
+    if len(s) == 1:
+        file_name = raw_file_name
+        version = 0
+    else:
+        file_name, version_str = raw_file_name.split('-')
+        version = int(version_str)
+    # drop the L from the front
+    file_name = file_name[1:]
+    level_str, run_str, suffix = file_name.split('.')
+    return int(level_str), int(run_str), suffix, version
+
+
+def to_file_name(level, run, suffix, version=None):
+    s = f'L{level}.{run}.{suffix}'
+    if version is not None:
+        s += f'-{version}'
+    return s
+
+
+def expand_version(version, max_per_level):
+    acc = []
+    while version != 0:
+        acc.append(version % max_per_level)
+        version //= max_per_level
+
+    levels_runs = []
+    for i, e in enumerate(acc):
+        j = e - 1
+        while j >= 0:
+            levels_runs.append((i, j))
+            j -= 1
+
+    return levels_runs
+
+
 class PathReplica(Replica):
     def __init__(self, src_dir_path, remote_dir_path):
+        # NOTE: works with files of the format L0.0.run-1
         super().__init__(src_dir_path)
 
         self.remote_dir_path = remote_dir_path
@@ -37,21 +73,84 @@ class PathReplica(Replica):
         if not os.path.isdir(self.remote_dir_path):
             os.mkdir(self.remote_dir_path)
 
+        # global_version keeps track of the latest version
+        self.global_version = 0
+
+        self.level_and_run_to_latest_version: dict[tuple[int, int], int] = defaultdict(int)
+        for raw_file_name in os.listdir(self.remote_dir_path):
+            file_path = os.path.join(self.remote_dir_path, raw_file_name)
+            if os.path.isfile(file_path):
+                level, run, suffix, version = parse_file_name(raw_file_name)
+                # count only the run files
+                if suffix == 'run':
+                    self.global_version += 1
+                self.level_and_run_to_latest_version[(level, run)] = max(
+                    self.level_and_run_to_latest_version[(level, run)], version)
+
     def put(self, filename):
         # using os.path.basename to be sure
-        shutil.copy(os.path.join(self.src_dir_path, os.path.basename(filename)), self.remote_dir_path)
+        filename = os.path.basename(filename)
+        level, run, suffix, version = parse_file_name(filename)
+        if suffix == 'run':
+            # if is runfile of level 0, increment global_version
+            if level == 0:
+                self.global_version += 1
+            # if it's a runfile of whatever level, increment file version
+            self.level_and_run_to_latest_version[(level, run)] += 1
+        # attach the version to filename
+        remote_filename = to_file_name(level, run, suffix, self.level_and_run_to_latest_version[(level, run)])
 
-    def get(self, filename):
-        shutil.copy(os.path.join(self.remote_dir_path, os.path.basename(filename)), self.src_dir_path)
+        # copy it over
+        shutil.copy(
+            os.path.join(self.src_dir_path, filename),
+            os.path.join(self.remote_dir_path, remote_filename)
+        )
 
-    def rm(self, filename):
-        os.remove(os.path.join(self.remote_dir_path, os.path.basename(filename)))
+    def get(self, filename, version=None):
+        if version is None:
+            # latest
+            level, run, _, _ = parse_file_name(filename)
+            version = self.level_and_run_to_latest_version[(level, run)]
 
-    def restore(self):
-        for file_name in os.listdir(self.remote_dir_path):
-            file_path = os.path.join(self.remote_dir_path, file_name)
+        filename = os.path.basename(filename)
+        filename_with_version = filename + f'-{version}'
+
+        if not os.path.isfile(os.path.join(self.remote_dir_path, filename_with_version)):
+            return
+
+        shutil.copy(
+            os.path.join(self.remote_dir_path, filename_with_version),
+            os.path.join(self.src_dir_path, filename)
+        )
+
+    def gc(self):
+        # remove all files with versions < latest and keep only the latest ones
+        for raw_file_name in os.listdir(self.remote_dir_path):
+            file_path = os.path.join(self.remote_dir_path, raw_file_name)
             if os.path.isfile(file_path):
-                shutil.copy(file_path, self.src_dir_path)
+                level, run, _, version = parse_file_name(raw_file_name)
+                # if not latest, remove
+                if self.level_and_run_to_latest_version[(level, run)] != version:
+                    os.remove(file_path)
+
+    def restore(self, max_per_level, version=None):
+        if version is None:
+            # fetch the latest version
+            version = self.global_version
+        # check that files exist
+        for level, run in expand_version(version, max_per_level):
+            if not (level, run) in self.level_and_run_to_latest_version:
+                return False
+
+        # clean up the local tree first
+        shutil.rmtree(self.src_dir_path)
+        os.mkdir(self.src_dir_path)
+
+        for level, run in expand_version(version, max_per_level):
+            self.get(to_file_name(level, run, 'run'))
+            self.get(to_file_name(level, run, 'filter'))
+            self.get(to_file_name(level, run, 'pointers'))
+        return True
 
     def destroy(self):
         shutil.rmtree(self.remote_dir_path)

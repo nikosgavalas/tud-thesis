@@ -40,12 +40,13 @@ have very small keyval lengths (cause i needed padding and large keyvals would m
 extra memory for the translation by using a dict...
 """
 
+from io import FileIO
 from sys import getsizeof
 from typing import Optional
 
 # from kevo.common.hashindex import HashIndex
 from kevo.common.ringbuffer import RingBuffer
-from kevo.engines.kvstore import KVStore
+from kevo.engines.kvstore import KVStore, Record
 from kevo.replication import Replica
 
 
@@ -56,31 +57,55 @@ class HybridLog(KVStore):
                  data_dir='./data',
                  max_key_len=255,
                  max_value_len=255,
+                 max_runs_per_level=3,
                  mem_segment_len=2 ** 20,
                  ro_lag_interval=2 ** 10,
                  flush_interval=(4 * 2 ** 10),
                  hash_index='dict',
-                 compaction_interval=0,
+                 compaction_enabled=False,
                  replica: Optional[Replica] = None):
         self.type = 'hybridlog'
         super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
 
+        assert max_runs_per_level > 0
         assert flush_interval > 0
-        assert compaction_interval >= 0  # if compaction interval is 0, compaction is disabled
         assert mem_segment_len >= ro_lag_interval + flush_interval
         assert hash_index in ['dict', 'native'], 'hash_index parameter must be either "dict" or "native"'
 
+        self.max_runs_per_level = max_runs_per_level
         self.ro_lag_interval = ro_lag_interval
         self.flush_interval = flush_interval
-        self.compaction_interval = compaction_interval  # in number of flushes
-        self.compaction_enabled = compaction_interval > 0
+        self.mem_segment_len = mem_segment_len
+        self.compaction_enabled = compaction_enabled
 
         if hash_index == 'native':
             # TODO
             # self.hash_index = HashIndex(n_buckets_power=4, key_len_bits=self.max_key_len*8, value_len_bits=self.max_value_len*8)
             raise NotImplementedError("do not use the native hash index, it currently has a bug, use 'dict' instead")
         else:
-            self.hash_index = {}
+            self.hash_index: dict[bytes, int] = {}
+
+        self.la_to_file_offset: dict[int, Record] = {}
+
+        self.head_offset: int = 0  # LA > head_offset is in mem
+        self.ro_offset: int = 0  # in LA > ro_offset we have the mutable region
+        self.tail_offset: int = 0  # points to the tail of the log, the next free available slot in memory
+
+        self.levels: list[int] = []
+        # read file-descriptors
+        self.rfds: list[list[FileIO]] = [[]]
+        # write file-descriptor
+        self.wfd: Optional[FileIO] = None
+
+        self.memory: Optional[RingBuffer] = None
+
+        if self.replica:
+            self.restore()
+        else:
+            self.rebuild_indices()
+
+    def rebuild_indices(self):
+        self.hash_index = {}
 
         self.la_to_file_offset = {}
 
@@ -88,33 +113,43 @@ class HybridLog(KVStore):
         self.ro_offset = 0  # in LA > ro_offset we have the mutable region
         self.tail_offset = 0  # points to the tail of the log, the next free available slot in memory
 
-        self.compaction_counter = 0
+        # do file discovery
+        data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if f.is_file()]
+        self.levels = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
+        for i in data_files_levels:
+            self.levels[i] += 1
 
-        self.log_path = self.data_dir / 'log'
-        self.log_path.touch()
-        with self.log_path.open('rb') as log_file:
-            offset = log_file.tell()
-            k, _ = self._read_kv_pair(log_file)
-            while k:
-                self.head_offset += 1
-                self.hash_index[k] = self.head_offset
-                self.la_to_file_offset[self.head_offset] = offset
+        self.rfds = [[(self.data_dir / f'L{level_idx}.{run_idx}.run').open('rb') for run_idx in range(n_runs)] for
+                     level_idx, n_runs in enumerate(self.levels)]
+        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('wb')
+        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
+
+        # rebuild the index
+        for level_idx, n_runs in reversed(list(enumerate(self.levels))):
+            for run_idx in range(n_runs):
+                log_file = self.rfds[level_idx][run_idx]
                 offset = log_file.tell()
                 k, _ = self._read_kv_pair(log_file)
+                while k:
+                    self.head_offset += 1
+                    self.hash_index[k] = self.head_offset
+                    self.la_to_file_offset[self.head_offset] = Record(level_idx, run_idx, offset)
+                    offset = log_file.tell()
+                    k, _ = self._read_kv_pair(log_file)
         self.ro_offset = self.head_offset
         self.tail_offset = self.ro_offset
 
-        self.rfd = self.log_path.open('rb')
-
-        self.memory = RingBuffer(mem_segment_len)
+        self.memory = RingBuffer(self.mem_segment_len)
 
     def close(self):
         self.flush(self.tail_offset)  # flush everything
-        self.rfd.close()
         self.save_metadata()
         if self.replica:
-            self.replica.put(self.log_path.name)
-            self.replica.put(self.metadata_path.name)
+            self.snapshot()
+        self.wfd.close()
+        for rfds in self.rfds:
+            for rfd in rfds:
+                rfd.close()
 
     def __getitem__(self, key):
         return self.get(key)
@@ -134,9 +169,10 @@ class HybridLog(KVStore):
             _, v = self.memory[offset]
             return v
 
-        file_offset = self.la_to_file_offset[offset]
-        self.rfd.seek(file_offset)
-        _, v = self._read_kv_pair(self.rfd)
+        record = self.la_to_file_offset[offset]
+        log_file = self.rfds[record.level][record.run]
+        log_file.seek(record.offset)
+        _, v = self._read_kv_pair(log_file)
         return v
 
     def set(self, key: bytes, value: bytes = KVStore.EMPTY):
@@ -164,53 +200,107 @@ class HybridLog(KVStore):
             self.flush(self.ro_offset)
 
     def flush(self, offset: int):
-        with self.log_path.open('ab') as log_file:
-            while self.head_offset < offset:
-                key, value = self.memory.pop()
-                write_offset = log_file.tell()
-                self.head_offset += 1
-                # if is not the most recent record, drop it, like we do with the file compaction
-                if self.hash_index[key] == self.head_offset:
-                    self._write_kv_pair(log_file, key, value)
-                    self.la_to_file_offset[self.head_offset] = write_offset
+        while self.head_offset < offset:
+            key, value = self.memory.pop()
+            write_offset = self.wfd.tell()
+            self.head_offset += 1
+            # if is not the most recent record, drop it, like we do with the file compaction
+            if self.hash_index[key] == self.head_offset:
+                self._write_kv_pair(self.wfd, key, value)
+                self.la_to_file_offset[self.head_offset] = Record(0, self.levels[0], write_offset)
 
-        if self.replica and not self.compaction_enabled:
-            self.replica.put(self.log_path.name)
+        self.wfd.close()
 
         if self.compaction_enabled:
-            self.compaction_counter += 1
-            if self.compaction_counter >= self.compaction_interval:
-                self.compaction()
-                # if compaction is enabled, wait to sync to replica store *after* the compaction
-                if self.replica and self.compaction_enabled:
-                    self.replica.put(self.log_path.name)
+            self.compaction(self.levels[0])
 
-    def compaction(self):
-        compacted_log_path = self.log_path.with_suffix('.tmp')
+        if self.replica:
+            self.replica.put(self.wfd.name)
+
+        self.levels[0] += 1
+        if self.levels[0] >= self.max_runs_per_level:
+            self.merge(0)
+
+        # open a new file after merging
+        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
+        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
+
+    def merge(self, level: int):
+        next_level = level + 1
+        if level + 1 >= len(self.levels):
+            self.levels.append(0)
+            self.rfds.append([])
+        next_run = self.levels[level + 1]
+
+        dst_file = (self.data_dir / f'L{next_level}.{next_run}.run').open('ab')
+        for run_idx in range(self.levels[level]):
+            src_file = self.rfds[level][run_idx]
+            src_offset = src_file.tell()
+            k, v = self._read_kv_pair(src_file)
+            while k:
+                if k in self.hash_index:
+                    la = self.hash_index[k]
+                    if la in self.la_to_file_offset and self.la_to_file_offset[la] == Record(level, run_idx, src_offset):
+                        dst_offset = dst_file.tell()
+                        self._write_kv_pair(dst_file, k, v)
+                        self.la_to_file_offset[la] = Record(next_level, next_run, dst_offset)
+                src_offset = src_file.tell()
+                k, v = self._read_kv_pair(src_file)
+        dst_file.close()
+
+        if self.replica:
+            self.replica.put(dst_file.name)
+
+        self.rfds[next_level].append((self.data_dir / f'L{next_level}.{next_run}.run').open('rb'))
+
+        # delete merged files
+        for rfd in self.rfds[level]:
+            rfd.close()
+        self.rfds[level].clear()
+        for run_idx in range(self.levels[level]):
+            path_to_remove = (self.data_dir / f'L{level}.{run_idx}.run')
+            path_to_remove.unlink()
+        # update the runs counter
+        self.levels[level] = 0
+        self.levels[next_level] += 1
+        # merge recursively
+        if self.levels[next_level] >= self.max_runs_per_level:
+            self.merge(next_level)
+
+    def compaction(self, run):
+        log_path = (self.data_dir / f'L0.{run}.run')
+        compacted_log_path = log_path.with_suffix('.tmp')
         # NOTE i can copy the index here and keep the old one for as long as the compaction is running to enable reads
         # concurrently
 
         with compacted_log_path.open('ab') as compacted_log_file:
-            read_offset = self.rfd.tell()
-            k, v = self._read_kv_pair(self.rfd)
+            read_offset = 0
+            self.rfds[0][run].seek(read_offset)
+            k, v = self._read_kv_pair(self.rfds[0][run])
             while k:
                 # not checking if k in index as it is for sure (i never remove keys from the index so far)
                 la = self.hash_index[k]
                 # if the record lies on disk and is the most recent one:
-                if la <= self.head_offset and self.la_to_file_offset[la] == read_offset:
+                if la <= self.head_offset and self.la_to_file_offset[la] == Record(0, run, read_offset):
                     write_offset = compacted_log_file.tell()
                     self._write_kv_pair(compacted_log_file, k, v)
-                    self.la_to_file_offset[la] = write_offset
-                read_offset = self.rfd.tell()
-                k, v = self._read_kv_pair(self.rfd)
+                    self.la_to_file_offset[la] = Record(0, run, write_offset)
+                read_offset = self.rfds[0][run].tell()
+                k, v = self._read_kv_pair(self.rfds[0][run])
 
-        self.rfd.close()
+        self.rfds[0][run].close()
         # rename the file back
-        compacted_log_path.rename(compacted_log_path.with_suffix(''))
+        compacted_log_path.rename(compacted_log_path.with_suffix('.run'))
         # get a new read fd
-        self.rfd = self.log_path.open('rb')
-        # reset the compaction counter
-        self.compaction_counter = 0
+        self.rfds[0][run] = log_path.open('rb')
+
+    def snapshot(self):
+        self.flush(self.tail_offset)
+
+    def restore(self, version=None):
+        if self.replica:
+            self.replica.restore(max_per_level=self.max_runs_per_level, version=None)
+            self.rebuild_indices()
 
     def __sizeof__(self):
         return getsizeof(self.hash_index) + getsizeof(self.la_to_file_offset) + getsizeof(self.memory)

@@ -3,8 +3,8 @@ LSM Tree with size-tiered compaction (write-optimized)
 TODO: consider using mmap for the files
 """
 
-from sys import getsizeof
 from collections import namedtuple
+from sys import getsizeof
 from typing import Optional
 
 from sortedcontainers import SortedDict
@@ -20,6 +20,7 @@ class LSMTree(KVStore):
     name = 'LSMTree'
 
     # NOTE the fence pointers can be used to organize data into compressible blocks
+    # NOTE the .filter and .pointers files could be embedded to the runfile (and then do a relative seek from the end).
     def __init__(self,
                  data_dir='./data',
                  max_key_len=255,
@@ -30,9 +31,6 @@ class LSMTree(KVStore):
                  replica: Optional[Replica] = None):
         self.type = 'lsmtree'
         super().__init__(data_dir=data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
-
-        if 'runs_per_level' not in self.metadata:
-            self.metadata['runs_per_level'] = []
 
         assert max_runs_per_level >= 1
         assert density_factor > 0
@@ -57,10 +55,26 @@ class LSMTree(KVStore):
 
         self.levels: list[list[Run]] = []
 
+        if self.replica:
+            # restore calls rebuild_indices, so this way we avoid rebuildint twice
+            self.restore()
+        else:
+            self.rebuild_indices()
+
+    def rebuild_indices(self):
+        self.levels = []
+
+        # do file discovery
+        data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if
+                             f.is_file() and f.name.endswith('.run')]
+        levels_lengths: list[int] = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
+        for i in data_files_levels:
+            levels_lengths[i] += 1
+
         # load filters and pointers for levels and runs
-        for _ in self.metadata['runs_per_level']:
+        for _ in levels_lengths:
             self.levels.append([])
-        for level_idx, n_runs in enumerate(self.metadata['runs_per_level']):
+        for level_idx, n_runs in enumerate(levels_lengths):
             for r in range(n_runs):
                 with (self.data_dir / f'L{level_idx}.{r}.pointers').open('r') as pointers_file:
                     data = pointers_file.read()
@@ -73,12 +87,10 @@ class LSMTree(KVStore):
                 self.levels[level_idx].append(Run(filter, pointers))
 
     def close(self):
-        # close the wal file (if not closed, it may not flush)
-        self.wal_file.close()
         self.save_metadata()
         if self.replica:
-            self.replica.put(self.metadata_path.name)
-            self.replica.put(self.wal_path.name)
+            self.snapshot()
+        self.wal_file.close()
 
     def __getitem__(self, key):
         return self.get(key)
@@ -122,7 +134,7 @@ class LSMTree(KVStore):
         if new_bytes_count > self.memtable_bytes_limit:
             # normally I would allocate a new memtable here so that writes can continue there
             # and then give the flushing of the old memtable to a background thread
-            self.flush_memtable()
+            self.flush()
         else:
             # write to wal
             self._write_kv_pair(self.wal_file, key, value)
@@ -203,27 +215,20 @@ class LSMTree(KVStore):
         # append new run
         next_level.append(Run(filter, fence_pointers))
 
-        # update metadata
-        self.metadata['runs_per_level'] = [len(l) for l in self.levels]
-        self.save_metadata()
-
         # sync with remote
         if self.replica:
             # -1 cause next_level was appended to previously
-            self.replica.put( f'L{level_idx + 1}.{len(next_level) - 1}.run')
+            self.replica.put(f'L{level_idx + 1}.{len(next_level) - 1}.run')
             self.replica.put(f'L{level_idx + 1}.{len(next_level) - 1}.pointers')
             self.replica.put(f'L{level_idx + 1}.{len(next_level) - 1}.filter')
-            for i, _ in enumerate(level):
-                self.replica.rm(f'L{level_idx}.{i}.run')
-                self.replica.rm(f'L{level_idx}.{i}.pointers')
-                self.replica.rm(f'L{level_idx}.{i}.filter')
-            self.replica.put(self.metadata_path.name)
 
         # cascade the merging recursively
-        if len(next_level) > self.max_runs_per_level:
+        if len(next_level) >= self.max_runs_per_level:
             self.merge(level_idx + 1)
 
-    def flush_memtable(self):
+    def flush(self):
+        if len(self.memtable) == 0:
+            return
         fence_pointers = FencePointers(self.density_factor)
         filter = BloomFilter(len(self.memtable))
 
@@ -250,14 +255,10 @@ class LSMTree(KVStore):
         with (self.data_dir / f'L{flush_level}.{n_runs}.filter').open('w') as filter_file:
             filter_file.write(filter.serialize())
 
-        self.metadata['runs_per_level'] = [len(l) for l in self.levels]
-        self.save_metadata()
-
         if self.replica:
             self.replica.put(f'L{flush_level}.{n_runs}.run')
             self.replica.put(f'L{flush_level}.{n_runs}.pointers')
             self.replica.put(f'L{flush_level}.{n_runs}.filter')
-            self.replica.put(self.metadata_path.name)
 
         # reset WAL
         self.wal_file.close()
@@ -266,8 +267,18 @@ class LSMTree(KVStore):
         # trigger merge if exceeding the runs per level
         # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the
         # first level
-        if len(self.levels[0]) > self.max_runs_per_level:
+        if len(self.levels[0]) >= self.max_runs_per_level:
             self.merge(0)
+
+    def snapshot(self):
+        self.flush()
+
+    def restore(self, version=None):
+        # flush first to empty the memtable
+        self.flush()
+        if self.replica:
+            self.replica.restore(max_per_level=self.max_runs_per_level, version=version)
+            self.rebuild_indices()
 
     def __sizeof__(self):
         memtable_size = sum((getsizeof(k) + getsizeof(v) for k, v in self.memtable.items()))

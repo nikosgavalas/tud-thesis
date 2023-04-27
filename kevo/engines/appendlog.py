@@ -1,12 +1,9 @@
 from sys import getsizeof
 from typing import Optional
-from collections import namedtuple
+from io import FileIO
 
-from kevo.engines.kvstore import KVStore
+from kevo.engines.kvstore import KVStore, Record
 from kevo.replication import Replica
-
-
-Record = namedtuple('Record', ['level', 'run', 'offset'])
 
 
 class AppendLog(KVStore):
@@ -51,20 +48,30 @@ class AppendLog(KVStore):
         self.counter = 0
 
         self.hash_index: dict[bytes, Record] = {}
+        self.levels: list[int] = []
+        # read file-descriptors
+        self.rfds: list[list[FileIO]] = [[]]
+        # write file-descriptor
+        self.wfd: Optional[FileIO] = None
 
+        if self.replica:
+            self.restore()
+        else:
+            self.rebuild_indices()
+
+    def rebuild_indices(self):
         # do file discovery
         data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if f.is_file()]
-        self.levels: list[int] = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
+        self.levels = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
         for i in data_files_levels:
             self.levels[i] += 1
 
-        # read file-descriptors
-        self.rfds = [[(self.data_dir / f'L{level_idx}.{run_idx}.run').open('rb') for run_idx in range(n_runs)] for level_idx, n_runs in enumerate(self.levels)]
-        # write file-descriptor
+        self.rfds = [[(self.data_dir / f'L{level_idx}.{run_idx}.run').open('rb') for run_idx in range(n_runs)] for
+                     level_idx, n_runs in enumerate(self.levels)]
         self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('wb')
         self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
 
-        # rebuild the index 
+        # rebuild the index
         for level_idx, n_runs in reversed(list(enumerate(self.levels))):
             for run_idx in range(n_runs):
                 log_file = self.rfds[level_idx][run_idx]
@@ -76,14 +83,13 @@ class AppendLog(KVStore):
                     k, _ = self._read_kv_pair(log_file)
 
     def close(self):
+        self.save_metadata()
+        if self.replica:
+            self.snapshot()
         self.wfd.close()
         for rfds in self.rfds:
             for rfd in rfds:
                 rfd.close()
-        self.save_metadata()
-        if self.replica:
-            self.replica.put(self.metadata_path.name)
-            self.replica.put(self.wfd.name)
 
     def __getitem__(self, key):
         return self.get(key)
@@ -121,19 +127,25 @@ class AppendLog(KVStore):
         self.counter += len(key) + len(value)
 
         if self.counter >= self.threshold:
-            self.counter = 0
-            self.wfd.close()
+            self.close_run()
 
-            if self.replica:
-                self.replica.put(self.wfd.name)
+    def close_run(self):
+        if self.counter == 0:
+            return
 
-            self.levels[0] += 1
-            if self.levels[0] > self.max_runs_per_level:
-                self.merge(0)
+        self.counter = 0
+        self.wfd.close()
 
-            # open a new file after merging
-            self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
-            self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
+        if self.replica:
+            self.replica.put(self.wfd.name)
+
+        self.levels[0] += 1
+        if self.levels[0] >= self.max_runs_per_level:
+            self.merge(0)
+
+        # open a new file after merging
+        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
+        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
 
     def merge(self, level: int):
         next_level = level + 1
@@ -168,14 +180,21 @@ class AppendLog(KVStore):
         for run_idx in range(self.levels[level]):
             path_to_remove = (self.data_dir / f'L{level}.{run_idx}.run')
             path_to_remove.unlink()
-            if self.replica:
-                self.replica.rm(path_to_remove.name)
         # update the runs counter
         self.levels[level] = 0
         self.levels[next_level] += 1
         # merge recursively
-        if self.levels[next_level] > self.max_runs_per_level:
+        if self.levels[next_level] >= self.max_runs_per_level:
             self.merge(next_level)
+
+    def snapshot(self):
+        self.close_run()
+
+    def restore(self, version=None):
+        self.close_run()
+        if self.replica:
+            self.replica.restore(max_per_level=self.max_runs_per_level, version=version)
+            self.rebuild_indices()
 
     def __sizeof__(self):
         return getsizeof(self.hash_index)

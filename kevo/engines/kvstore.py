@@ -4,6 +4,10 @@ Base class for IndexedLog and LSMTree classes.
 
 import json
 from pathlib import Path
+from collections import namedtuple
+
+
+Record = namedtuple('Record', ['level', 'run', 'offset'])
 
 
 def bytes_needed_to_encode_len(length):
@@ -32,8 +36,6 @@ class KVStore:
         self.val_enc_len = bytes_needed_to_encode_len(self.max_value_len)
 
         self.replica = replica
-        if self.replica:
-            self.replica.restore()
 
         self.metadata = {}
         self.metadata_path = self.data_dir / 'metadata'
