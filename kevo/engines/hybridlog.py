@@ -67,7 +67,7 @@ class HybridLog(KVStore):
         self.type = 'hybridlog'
         super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
 
-        assert max_runs_per_level > 0
+        assert max_runs_per_level > 1
         assert flush_interval > 0
         assert mem_segment_len >= ro_lag_interval + flush_interval
         assert hash_index in ['dict', 'native'], 'hash_index parameter must be either "dict" or "native"'

@@ -40,7 +40,7 @@ class AppendLog(KVStore):
         # NOTE: handled deletes nicely, optimized by keeping the files open for reading, since 50% of the time was being
         # wasted in fopens as profiling showed.
 
-        assert max_runs_per_level >= 1
+        assert max_runs_per_level > 1
         assert threshold > 0
 
         self.max_runs_per_level = max_runs_per_level

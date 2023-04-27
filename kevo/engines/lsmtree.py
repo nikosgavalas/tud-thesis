@@ -32,7 +32,7 @@ class LSMTree(KVStore):
         self.type = 'lsmtree'
         super().__init__(data_dir=data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
 
-        assert max_runs_per_level >= 1
+        assert max_runs_per_level > 1
         assert density_factor > 0
         assert memtable_bytes_limit > 0
 

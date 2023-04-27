@@ -1,2 +1,2 @@
-from .engines import LSMTree, HybridLog, AppendLog
+from .engines import LSMTree, HybridLog, AppendLog, MemOnly
 from .replication import PathReplica, MinioReplica

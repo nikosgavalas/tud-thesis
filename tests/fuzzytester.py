@@ -2,15 +2,15 @@ import shutil
 from random import Random
 from typing import Type, Any, Optional
 
-from kevo import LSMTree, HybridLog, AppendLog
+from kevo import LSMTree, HybridLog, AppendLog, MemOnly
 
 
-class FuzzyTester():
+class FuzzyTester:
     def __init__(self):
         pass
 
     def fuzzy_test(self,
-                   engine_cls: Type[AppendLog] | Type[HybridLog] | Type[LSMTree],
+                   engine_cls: Type[AppendLog] | Type[HybridLog] | Type[LSMTree] | Type[MemOnly],
                    args: dict[str, Any],
                    key_len_range: tuple[int, int] = (1, 10),
                    val_len_range: tuple[int, int] = (0, 10),

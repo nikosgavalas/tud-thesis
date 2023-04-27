@@ -48,6 +48,7 @@ class TestReplica(unittest.TestCase):
         self.assertEqual(read_file(self.dir / fname), '2')
 
     def test_version_expansion(self):
+        self.assertEqual(expand_version(1, 1), [(0, 0)])
         self.assertEqual(expand_version(0, 3), [])
         self.assertEqual(expand_version(8, 3), [(0, 1), (0, 0), (1, 1), (1, 0)])
         self.assertEqual(expand_version(9, 3), [(2, 0)])

@@ -48,6 +48,9 @@ def to_file_name(level, run, suffix, version=None):
 
 
 def expand_version(version, max_per_level):
+    if max_per_level == 1:
+        return [(0, 0)]
+
     acc = []
     while version != 0:
         acc.append(version % max_per_level)
