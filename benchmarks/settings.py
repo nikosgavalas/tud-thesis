@@ -55,11 +55,12 @@ def make_engines_args(experiment_id, base_dir):
                 'data_dir': [base_dir + HybridLog.name],
                 'max_key_len': OVERWRITTEN,
                 'max_value_len': OVERWRITTEN,
+                'max_runs_per_level': [1],
                 'mem_segment_len': [2 ** 20],
                 'ro_lag_interval': [2 ** 10],
                 'flush_interval': [4 * 2 ** 10],
                 'hash_index': ['dict'],
-                'compaction_interval': [0],
+                'compaction_enabled': [False],
                 'replica': [None]
             },
             {
@@ -86,11 +87,12 @@ def make_engines_args(experiment_id, base_dir):
                 'data_dir': [base_dir + HybridLog.name],
                 'max_key_len': OVERWRITTEN,
                 'max_value_len': OVERWRITTEN,
+                'max_runs_per_level': [1],
                 'mem_segment_len': [2 ** 20],
                 'ro_lag_interval': [2 ** 10],
                 'flush_interval': [4 * 2 ** 10],
                 'hash_index': ['dict'],
-                'compaction_interval': [0],
+                'compaction_enabled': [False],
                 'replica': [None]
             },
             {
