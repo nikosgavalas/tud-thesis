@@ -59,20 +59,25 @@ def main():
     parser.add_argument('-d', type=str, help='path to data directory', default='./data')
 
     lsm_parser = subparsers.add_parser('lsmtree')
+    lsm_parser.add_argument('--max-key-len', type=int, help='max key length', default=255)
+    lsm_parser.add_argument('--max-val-len', type=int, help='max value length', default=255)
     lsm_parser.add_argument('--runs-per-level', type=int, help='max runs per level', default=3)
     lsm_parser.add_argument('--density-factor', type=int, help='density factor', default=20)
     lsm_parser.add_argument('--memory-limit', type=int, help='memtable bytes limit', default=10**6)
 
     hybridlog_parser = subparsers.add_parser('hybridlog')
-    hybridlog_parser.add_argument('--max-key-len', type=int, help='max key length', default=4)
-    hybridlog_parser.add_argument('--max-val-len', type=int, help='max value length', default=4)
+    hybridlog_parser.add_argument('--max-key-len', type=int, help='max key length', default=255)
+    hybridlog_parser.add_argument('--max-val-len', type=int, help='max value length', default=255)
+    hybridlog_parser.add_argument('--runs-per-level', type=int, help='max runs per level', default=3)
     hybridlog_parser.add_argument('--memory', type=int, help='memory segment length in bytes', default=2**20)
     hybridlog_parser.add_argument('--ro-lag', type=int, help='read-only lag interval in num. of records', default=2**10)
     hybridlog_parser.add_argument('--flush-interval', type=int, help='flush interval in num. of records', default=(4 * 2**10))
     hybridlog_parser.add_argument('--hash-index', type=str, help='type of the hash index, native or dict', default='dict')
-    hybridlog_parser.add_argument('--compaction-interval', type=int, help='compaction interval in num of flushes. If zero, compaction is disabled (default)', default=0)
+    hybridlog_parser.add_argument('--compaction-enabled', type=bool, help='compaction interval in num of flushes. If zero, compaction is disabled (default)', default=False)
 
     appendlog_parser = subparsers.add_parser('appendlog')
+    hybridlog_parser.add_argument('--max-key-len', type=int, help='max key length', default=255)
+    hybridlog_parser.add_argument('--max-val-len', type=int, help='max value length', default=255)
     appendlog_parser.add_argument('--runs-per-level', type=int, help='max runs per level', default=3)
     appendlog_parser.add_argument('--threshold', type=int, help='threshold that triggers merging, in bytes', default=(4 * 10**6))
 
