@@ -2,28 +2,7 @@ import os
 import shutil
 from collections import defaultdict
 
-from minio import Minio
-
-
-# abstract class
-class Replica:
-    def __init__(self, src_dir_path):
-        self.src_dir_path = src_dir_path
-
-    def put(self, filename):
-        raise NotImplementedError
-
-    def get(self, filename, version=None):
-        raise NotImplementedError
-
-    def gc(self):
-        raise NotImplementedError
-
-    def restore(self, max_per_level, version=None):
-        raise NotImplementedError
-
-    def destroy(self):
-        raise NotImplementedError
+from minio import Minio, S3Error
 
 
 def parse_file_name(raw_file_name):
@@ -47,6 +26,11 @@ def to_file_name(level, run, suffix, version=None):
     return s
 
 
+def read_key(filename):
+    with open(filename, 'r') as f:
+        return f.read()
+
+
 def expand_version(version, max_per_level):
     if max_per_level == 1:
         return [(0, 0)]
@@ -64,6 +48,27 @@ def expand_version(version, max_per_level):
             j -= 1
 
     return levels_runs
+
+
+# abstract class
+class Replica:
+    def __init__(self, src_dir_path):
+        self.src_dir_path = src_dir_path
+
+    def put(self, filename):
+        raise NotImplementedError
+
+    def get(self, filename, version=None):
+        raise NotImplementedError
+
+    def gc(self):
+        raise NotImplementedError
+
+    def restore(self, max_per_level, version=None):
+        raise NotImplementedError
+
+    def destroy(self):
+        raise NotImplementedError
 
 
 class PathReplica(Replica):
@@ -164,31 +169,90 @@ class MinioReplica(Replica):
         super().__init__(src_dir_path)
 
         self.bucket = bucket
-        self.client = minio_client if minio_client else Minio(address, self.read_key(access_key_fname), self.read_key(secret_key_fname), secure=False)
+        self.client = minio_client if minio_client else Minio(address, read_key(access_key_fname), read_key(secret_key_fname), secure=False)
 
         if not self.client.bucket_exists(self.bucket):
             self.client.make_bucket(self.bucket)
 
+        self.global_version = 0
+
+        self.level_and_run_to_latest_version: dict[tuple[int, int], int] = defaultdict(int)
+
+        for remote_object in self.client.list_objects(self.bucket):
+            raw_file_name = remote_object.object_name
+            level, run, suffix, version = parse_file_name(raw_file_name)
+            # count only the run files
+            if suffix == 'run':
+                self.global_version += 1
+            self.level_and_run_to_latest_version[(level, run)] = max(
+                self.level_and_run_to_latest_version[(level, run)], version)
+
     def put(self, filename):
+        # using os.path.basename to be sure
         filename = os.path.basename(filename)
-        self.client.fput_object(self.bucket, filename, os.path.join(self.src_dir_path, filename))
+        level, run, suffix, version = parse_file_name(filename)
+        if suffix == 'run':
+            # if is runfile of level 0, increment global_version
+            if level == 0:
+                self.global_version += 1
+            # if it's a runfile of whatever level, increment file version
+            self.level_and_run_to_latest_version[(level, run)] += 1
+        # attach the version to filename
+        remote_filename = to_file_name(level, run, suffix, self.level_and_run_to_latest_version[(level, run)])
 
-    def get(self, filename):
+        self.client.fput_object(
+            self.bucket, remote_filename,
+            os.path.join(self.src_dir_path, filename)
+        )
+
+    def get(self, filename, version=None):
+        if version is None:
+            # latest
+            level, run, _, _ = parse_file_name(filename)
+            version = self.level_and_run_to_latest_version[(level, run)]
+
         filename = os.path.basename(filename)
-        self.client.fget_object(self.bucket, filename, os.path.join(self.src_dir_path, filename))
+        filename_with_version = filename + f'-{version}'
 
-    def rm(self, filename):
-        self.client.remove_object(self.bucket, os.path.basename(filename))
+        try:
+            self.client.fget_object(
+                self.bucket, filename_with_version,
+                os.path.join(self.src_dir_path, filename)
+            )
+        except S3Error:
+            # if the file does not exist, it's fine.
+            pass
 
-    def restore(self):
-        for o in self.client.list_objects(self.bucket):
-            self.get(o.object_name)
+    def gc(self):
+        # remove all files with versions < latest and keep only the latest ones
+        for raw_file_name in os.listdir(self.remote_dir_path):
+            file_path = os.path.join(self.remote_dir_path, raw_file_name)
+            if os.path.isfile(file_path):
+                level, run, _, version = parse_file_name(raw_file_name)
+                # if not latest, remove
+                if self.level_and_run_to_latest_version[(level, run)] != version:
+                    os.remove(file_path)
+
+    def restore(self, max_per_level, version=None):
+        if version is None:
+            # fetch the latest version
+            version = self.global_version
+        # check that files exist
+        for level, run in expand_version(version, max_per_level):
+            if not (level, run) in self.level_and_run_to_latest_version:
+                return False
+
+        # clean up the local tree first
+        shutil.rmtree(self.src_dir_path)
+        os.mkdir(self.src_dir_path)
+
+        for level, run in expand_version(version, max_per_level):
+            self.get(to_file_name(level, run, 'run'))
+            self.get(to_file_name(level, run, 'filter'))
+            self.get(to_file_name(level, run, 'pointers'))
+        return True
 
     def destroy(self):
         for o in self.client.list_objects(self.bucket):
-            self.rm(o.object_name)
+            self.client.remove_object(self.bucket, o.object_name)
         self.client.remove_bucket(self.bucket)
-
-    def read_key(self, filename):
-        with open(filename, 'r') as f:
-            return f.read()

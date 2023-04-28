@@ -2,7 +2,7 @@ import shutil
 import unittest
 from pathlib import Path
 
-from kevo import AppendLog, PathReplica
+from kevo import AppendLog, PathReplica, MinioReplica
 from fuzzytester import FuzzyTester
 
 

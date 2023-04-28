@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from fuzzytester import FuzzyTester
-from kevo import HybridLog, PathReplica
+from kevo import HybridLog, PathReplica, MinioReplica
 
 
 class TestHybridLog(unittest.TestCase, FuzzyTester):

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from fuzzytester import FuzzyTester
-from kevo import LSMTree, PathReplica
+from kevo import LSMTree, PathReplica, MinioReplica
 
 
 class TestLSMTree(unittest.TestCase, FuzzyTester):
