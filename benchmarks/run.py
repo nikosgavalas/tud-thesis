@@ -1,3 +1,4 @@
+import sys
 from sys import getsizeof
 import itertools
 import os
@@ -10,6 +11,8 @@ from tqdm import tqdm
 
 from benchmarks import Timer, Uniform, Zipfian, HotSet, make_distros_args, make_engines_args, make_experiments_args
 from kevo import LSMTree, HybridLog, AppendLog
+
+sys.path.append('.')  # make it runnable from the top level
 
 
 def explode(d):
@@ -41,8 +44,8 @@ def main():
             for distro_comb in explode(distro_args):
                 distro = distro_cl(**distro_comb)
 
-                keys_set = [rng.randbytes(rng.randint(1, klen)) for _ in range(n_items)]
-                vals_set = [rng.randbytes(rng.randint(1, vlen)) for _ in range(n_items)]  # (0, vlen) if deletes too
+                keys_set = [rng.randbytes(klen) for _ in range(n_items)]
+                vals_set = [rng.randbytes(vlen) for _ in range(n_items)]
                 keys = [keys_set[next(distro)] for _ in range(n_ops)]
                 vals = [vals_set[next(distro)] for _ in range(n_ops)]
 

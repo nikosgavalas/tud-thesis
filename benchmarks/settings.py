@@ -12,10 +12,10 @@ def make_experiments_args(experiment_id):
           [100]   # n_ops_list
         ],
         1: [  # experiment 1, compare all engines altogether
-            [10, 50, 100],
-            [100, 500, 1000],
-            [100, 10_000, 100_000],
-            [1_000, 10_000, 100_000, 1_000_000],
+            [5, 10, 15],
+            [5, 10, 15],
+            [100, 500, 1_000],
+            [1_000, 10_000, 100_000],
         ]
     }
     return experiments[experiment_id]
@@ -80,7 +80,7 @@ def make_engines_args(experiment_id, base_dir):
                 'max_value_len': OVERWRITTEN,
                 'max_runs_per_level': [3, 6, 9],
                 'density_factor': [1, 10, 100],
-                'memtable_bytes_limit': [100_000, 1_000_000, 10_000_000],
+                'memtable_bytes_limit': [100_000, 500_000, 1_000_000],
                 'replica': [None]
             },
             {
@@ -88,9 +88,9 @@ def make_engines_args(experiment_id, base_dir):
                 'max_key_len': OVERWRITTEN,
                 'max_value_len': OVERWRITTEN,
                 'max_runs_per_level': [3, 6, 9],
-                'mem_segment_len': [100_000, 1_000_000, 10_000_000],
-                'ro_lag_interval': [10_000, 100_000, 1_000_000],
-                'flush_interval': [10_000, 100_000, 1_000_000],
+                'mem_segment_len': [100_000, 500_000, 1_000_000],
+                'ro_lag_interval': [10_000, 20_000, 30_000],
+                'flush_interval': [10_000, 20_000, 30_000],
                 'hash_index': ['dict'],
                 'compaction_enabled': [False, True],
                 'replica': [None]
@@ -100,7 +100,7 @@ def make_engines_args(experiment_id, base_dir):
                 'max_key_len': OVERWRITTEN,
                 'max_value_len': OVERWRITTEN,
                 'max_runs_per_level': [3, 6, 9],
-                'threshold': [100_000, 1_000_000, 10_000_000],
+                'threshold': [100_000, 500_000, 1_000_000],
                 'replica': [None]
             }
         ]
