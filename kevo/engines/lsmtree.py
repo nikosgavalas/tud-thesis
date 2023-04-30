@@ -5,6 +5,7 @@ LSM Tree with size-tiered compaction (write-optimized)
 from collections import namedtuple
 from sys import getsizeof
 from typing import Optional
+from io import FileIO
 
 from sortedcontainers import SortedDict
 
@@ -51,6 +52,7 @@ class LSMTree(KVStore):
         self.wal_file = self.wal_path.open('ab')
 
         self.levels: list[list[Run]] = []
+        self.rfds: list[list[FileIO]] = [[]]
 
         if self.replica:
             # restore calls rebuild_indices, so this way we avoid rebuilding twice
@@ -60,6 +62,7 @@ class LSMTree(KVStore):
 
     def rebuild_indices(self):
         self.levels = []
+        self.rfds: list[list[FileIO]] = [[]]
 
         # do file discovery
         data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if
@@ -67,6 +70,9 @@ class LSMTree(KVStore):
         levels_lengths: list[int] = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
         for i in data_files_levels:
             levels_lengths[i] += 1
+
+        self.rfds = [[(self.data_dir / f'L{level_idx}.{run_idx}.run').open('rb') for run_idx in range(n_runs)] for
+                     level_idx, n_runs in enumerate(levels_lengths)]
 
         # load filters and pointers for levels and runs
         for _ in levels_lengths:
@@ -88,6 +94,9 @@ class LSMTree(KVStore):
         if self.replica:
             self.snapshot()
         self.wal_file.close()
+        for rfds in self.rfds:
+            for rfd in rfds:
+                rfd.close()
 
     def __getitem__(self, key):
         return self.get(key)
@@ -110,12 +119,12 @@ class LSMTree(KVStore):
                     if idx < 0:
                         idx = 0
                     _, offset = run.pointers.peekitem(idx)
-                    with (self.data_dir / f'L{level_idx}.{i}.run').open('rb') as run_file:
-                        run_file.seek(offset)
-                        for i in range(run.pointers.density_factor):
-                            read_key, read_value = self._read_kv_pair(run_file)
-                            if read_key == key:
-                                return read_value
+                    run_file = self.rfds[level_idx][i]
+                    run_file.seek(offset)
+                    for _ in range(run.pointers.density_factor):
+                        read_key, read_value = self._read_kv_pair(run_file)
+                        if read_key == key:
+                            return read_value
 
         return KVStore.EMPTY
 
@@ -149,7 +158,7 @@ class LSMTree(KVStore):
 
         fds, keys, values, is_empty = [], [], [], []
         for i, _ in enumerate(level):
-            fd = (self.data_dir / f'L{level_idx}.{i}.run').open('rb')
+            fd = self.rfds[level_idx][i]
             fds.append(fd)
             k, v = self._read_kv_pair(fd)
             keys.append(k)
@@ -191,8 +200,12 @@ class LSMTree(KVStore):
                         if not keys[i]:
                             is_empty[i] = True
 
+        if level_idx + 1 >= len(self.rfds):
+            self.rfds.append([])
+        self.rfds[level_idx + 1].append((self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run').open('rb'))
         for fd in fds:
             fd.close()
+        self.rfds[level_idx].clear()
 
         with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.pointers').open('w') as pointers_file:
             pointers_file.write(fence_pointers.serialize())
@@ -245,6 +258,7 @@ class LSMTree(KVStore):
         self.memtable_bytes_count = 0
 
         self.levels[flush_level].append(Run(filter, fence_pointers))
+        self.rfds[0].append((self.data_dir / f'L{flush_level}.{n_runs}.run').open('rb'))
 
         with (self.data_dir / f'L{flush_level}.{n_runs}.pointers').open('w') as pointers_file:
             pointers_file.write(fence_pointers.serialize())
