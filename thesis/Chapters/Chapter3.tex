@@ -4,4 +4,26 @@
 
 \label{Chapter3}
 
-\section{TODO}
+\section{Log-Structured Merge-Tree}
+
+% LSMT with size-tiered compaction (write-optimized)
+
+% explain how it works
+
+% possible optimizations:
+% 1. https://www.youtube.com/watch?v=b6SI8VbcT4w
+% 2. fence pointers can be used to organize data into compressible blocks
+% 3. the .filter and .pointers files could be embedded to the runfile (and then do a relative seek from the end)
+% this would help with the save to replica things
+
+
+\section{Append Log}
+
+
+
+\section{Hybrid Log}
+
+% possible extensions/optimizations applicable to all engines:
+% concurrency! explain how it can be applied, what to lock etc.
+% mmap for the files
+% checksums for malformed records

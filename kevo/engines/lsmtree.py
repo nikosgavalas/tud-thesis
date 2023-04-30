@@ -1,6 +1,5 @@
 """
 LSM Tree with size-tiered compaction (write-optimized)
-TODO: consider using mmap for the files
 """
 
 from collections import namedtuple
@@ -19,8 +18,6 @@ Run = namedtuple('Run', ['filter', 'pointers'])
 class LSMTree(KVStore):
     name = 'LSMTree'
 
-    # NOTE the fence pointers can be used to organize data into compressible blocks
-    # NOTE the .filter and .pointers files could be embedded to the runfile (and then do a relative seek from the end).
     def __init__(self,
                  data_dir='./data',
                  max_key_len=255,
@@ -56,7 +53,7 @@ class LSMTree(KVStore):
         self.levels: list[list[Run]] = []
 
         if self.replica:
-            # restore calls rebuild_indices, so this way we avoid rebuildint twice
+            # restore calls rebuild_indices, so this way we avoid rebuilding twice
             self.restore()
         else:
             self.rebuild_indices()

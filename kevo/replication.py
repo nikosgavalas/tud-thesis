@@ -142,6 +142,8 @@ class PathReplica(Replica):
                     os.remove(file_path)
 
     def restore(self, max_per_level, version=None):
+        os.makedirs(self.remote_dir_path, exist_ok=True)
+
         if version is None:
             # fetch the latest version
             version = self.global_version
