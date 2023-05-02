@@ -2,12 +2,98 @@
 
 \chapter{Introduction}
 
-\label{Chapter1} % Change X to a consecutive number; for referencing this chapter elsewhere, use \ref{ChapterX}
+\label{Chapter1}
+
+Cloud Computing has seen a dramatic rise in its adoption the recent years, with an increasing number of enterprises migrating their software and hardware to the cloud, and this trend is only expected to continue [\cite{serverless-preds}].
+Historically, this shift towards managed infrastructure has been arguably inevitable, because with cloud computing the cost per unit of computation is minimized [\cite{rise-of-serverless}].
+The drive for increased efficiency in computation has culminated in the emergence of the \textit{serverless} architecture [\cite{serverless-definition}].
+
+In the serverless cloud computing execution model, applications are being developed as collections of fine-grained event-driven and stateless units of computation called \textit{cloud functions}.
+Cloud providers offer the execution of serverless functions as a paid service, known as \textit{Function-as-a-Service} or \textit{FaaS} [\cite{faas-definition}].
+
+In order to be highly scalable, FaaS offerings are stateless.
+However, as most applications require some form of state-keeping, developers are often forced to manage their applications' state using external databases.
+Recently, there have been multiple works that aim to relieve the burden of state-management from the shoulders of application developers [\cite{orleans,durable-functions,beldi}], by handing application state to external databases and making their management transparent to the developers, providing them with \textit{stateful functions}, or \textit{SFaaS}.
+
+SFaaS systems ease the development of stateful applications, but they are not a panacea per se.
+Any programmer that develops distributed applications will eventually have to deal with fundamental potential issues such as network partitioning, system failures and the Byzantine generals messaging problem [\cite{byzantine}].
+These problems become especially hard to deal with when the application level requires implementing \textit{transactional} logic, as transactions require extra guarantees. Transactions are sets of operations that have to be ACID - Atomic, Consistent, Isolated, and Durable [\cite{transaction-definition}]. 
+
+The result is often the developers mixing business logic with consistency checks, rollbacks, snapshots and timeouts, leading to systems that are exceptionally hard to maintain and prone to failures.
+The need for an intermediary layer that abstracts the distributed fault-tolerance logic and provides the application developer with certain guarantees, at the state level or even at the transactional level if possible, becomes evident.
+
+SFaaS systems build on top of \textit{stateful streaming dataflow engines} such as Apache Flink StateFun [\cite{apache-flink}] make excellent candidates for implementing \textit{transactional SFaaS} systems, primarily for two reasons [\cite{transactions-serverless-functions-leveraging-stateful-dataflows}]:
+
+\begin{enumerate}
+    \item They offer \textit{exactly-once} message delivery semantics, eliminating the need for identifying lost messages and resending them, and also guarantee the message delivery order - the communication channels between the distributed components are FIFO.
+    \item They fully manage the system's global distributed state by periodically creating consistent snapshots and recovering them upon failures. This is especially important for implementing transactions, since for failed transactions there needs to be a rollback mechanism to guarantee the atomicity property.
+\end{enumerate}
+
+% TODO ask kyriakos if this is right.
+Dataflow SFaaS systems are comprised of multiple worker processes, with each of them keeping a partition of the global state locally [\cite{apache-flink}]. The state is represented as key-value pairs [TODO cite], making key-value stores an ideal choice as embedded databases for this task.
+
+As the key-value store is a critical component of this architecture, it is essential to carefully evaluate the available options of suitable types of key-value stores and motivate our selection.
+
 
 \section{Problem Statement}
 
+In a (transactional) dataflow SFaaS system, the key-value stores need to have specific properties to be considered suitable. These properties are [\cite{faster}]:
+
+\begin{enumerate}
+    \item \textit{Incremental snapshots} [TODO cite?].
+    When the dataflow engine requests a worker to create a snapshot of its state, the state backend (the key-value store) will dump the state and save it. As this process happens many times during the execution of a workflow, to ensure fault-tolerance and fast state recovery, it is imperative that it is done efficiently, building on previous snapshots.
+    
+    The naive solution is to save the whole state every time, but if there is a way to only save the updates on the state at each step, incrementally, it would definitely be more efficient. However, saving only the updates on each step, would make recovery very slow, as the state would need to be rebuilt from the very beginning in case of a system failure.
+    In this work, we will present a way to have the best of both worlds: \textit{both fast incremental snapshotting and low recovery times}.
+
+    \item \textit{State recovery to a previous version from previous snapshots (rollback)} [TODO cite?]. Upon execution, the dataflow coordinator process may request the workers to restore some previous version of their state, so that the system can go back to some consistent global state and ``replay'' events to recover from some failure.
+    
+    \item \textit{Larger-than-memory data (spill-to-disk)}.
+    When dealing with large volumes of data, it is expected that during execution the state will exceed in size the amount that can be stored in memory.
+    Hence, it is essential that the key-value store employs persistent storage when necessary to handle states larger than the available memory.
+
+    \item \textit{Update-intensity}.
+    In dataflow systems, changes to the state are typically characterized by the volume of updates rather than inserts or deletes, especially for workflows that perform aggregations on data or analytics [TODO cite?]. Therefore, the state backend should be suitable for update-heavy workloads.
+
+    \item \textit{Locality}.
+    In real-world dataflow applications, access to data is rarely uniformly distributed.
+    Keys that are ``alive'' at any moment may be of many orders of magnitude, but it's usually a subset of those that are ``hot'' at some given time, i.e. accessed or updated frequently.
+    The hot set may drift as time passes but the strong temporal locality property is maintained [TODO cite].
+
+    \item \textit{Point operations}.
+    A key-value store for our use-case should be optimal for point operations, i.e. operations associated with a single key, as opposed to range operations.
+    Since state updates rarely operate on ranges of keys, we can leverage this knowledge to our advantage.
+
+    % TODO analytics readiness?
+\end{enumerate}
+
 \section{Research Questions}
+\label{section-reseach-questions}
+
+At this point we can form our research questions:
+
+\begin{enumerate}
+    \item Which types of key-value stores are more fitting as embedded state stores in the worker processes of transactional dataflow SFaaS systems?
+    % TODO use \begin{tcolorbox} to be fancy
+    \item How do changes in the parameters of each selected type of key-value store affect its performance?
+    \item In the selected types of key-value stores, which are the trade-offs that determine their operation? In which general use-cases does each of them perform better?
+    \item How does the performance of a key-value store that offers incremental snapshotting functionality compare to that of a "naive" in-memory key-value store that snapshots its entire state at each step, in terms of disk usage and snapshot creation time?
+    \item Is there a key-value store that is absolutely superior for state management? % TODO spoiler alert no, offer the programmer the ability to choose based on his app's reqs
+\end{enumerate}
 
 \section{Contributions}
 
+We summarize this work's contributions in the following points:
+
+\begin{enumerate}
+    \item We have implemented four different key-value stores, as it is crucial to ensure that comparisons are made on a level playing field. This means that all key-value stores have been implemented using the same language and with similar design choices for mutual functionality, such as data encoding and data structures. This approach ensures that only the key-value store logic differs, allowing for fair comparisons.
+    
+    \item We conduct a series of experiments to answer our research questions we posed in section \ref{section-reseach-questions}. Specifically, we analyze the parameters of each implemented key-value store and examine the trade-offs in their designs with respect to resource utilization. We perform a comprehensive comparison among them, evaluate the effectiveness of incremental snapshotting, and ultimately determine whether a key-value store stands out as the best option for our use-case.
+\end{enumerate}
+
 \section{Outline}
+
+The rest of this thesis is structured as follows. In Chapter \ref{Chapter2-related-work} we go through the related work. [...TODO]
+Chapter \ref{Chapter3-implementation} contains extensive explanations of the internals of each type of key-value store and the implementation details and design decisions of each of them. [...TODO]
+In Chapter \ref{Chapter4-evaluation}, we evaluate our implementations, performing benchmarks and comparisons between the key-value stores. We discuss the results and answer our reseach questions.
+Finally, in Chapter \ref{Chapter5-conclusion} we conclude by recapitulating the current work and proposing some directions for future reseach. % + mention the limitations of this work.
