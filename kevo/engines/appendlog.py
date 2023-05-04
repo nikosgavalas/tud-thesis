@@ -194,6 +194,11 @@ class AppendLog(KVStore):
         self.close_run()
         if self.replica:
             self.replica.restore(max_per_level=self.max_runs_per_level, version=version)
+            if self.wfd is not None:
+                self.wfd.close()
+            for rfds in self.rfds:
+                for rfd in rfds:
+                    rfd.close()
             self.rebuild_indices()
 
     def __sizeof__(self):

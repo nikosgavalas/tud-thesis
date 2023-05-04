@@ -40,6 +40,25 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
 
         l.close()
 
+    def test_replica(self):
+        db = AppendLog(self.dir.name, replica=self.replica)
+        db.set(b'a', b'1')
+        db.set(b'b', b'2')
+        db.snapshot()
+        db.set(b'a', b'3')
+        db.set(b'b', b'4')
+        db.close()
+
+        shutil.rmtree(self.dir.name)
+
+        db = AppendLog(self.dir.name, replica=self.replica)
+        self.assertEqual(db.get(b'a'), b'3')
+        self.assertEqual(db.get(b'b'), b'4')
+        db.restore(version=1)
+        self.assertEqual(db.get(b'a'), b'1')
+        self.assertEqual(db.get(b'b'), b'2')
+        db.close()
+
     def test_fuzzy_realistic(self):
         self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'replica': None}, key_len_range=(1, 10),
                         val_len_range=(0, 10), n_items=1000, n_iter=1_000_000, seeds=[1], test_recovery=True,

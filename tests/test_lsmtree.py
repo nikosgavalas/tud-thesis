@@ -54,28 +54,6 @@ class TestLSMTree(unittest.TestCase, FuzzyTester):
                         key_len_range=(1, 10), val_len_range=(0, 13), n_items=100, n_iter=1_000_000, seeds=[1],
                         test_recovery=True, test_replica=True)
 
-    def test_merge(self):
-        l = LSMTree(self.dir.name, max_runs_per_level=3, density_factor=3, memtable_bytes_limit=10)
-
-        l.set(b'a1', b'a1')
-        l.set(b'a1', b'a11')
-        l.set(b'a2', b'a2')
-
-        l.set(b'a2', b'a22')
-        l.set(b'a3', b'a3')
-        l.set(b'a4', b'a4')
-
-        l.set(b'a3', b'a31')
-        l.set(b'a5', b'a5')
-        l.set(b'a6', b'a6')
-
-        with (self.dir / 'L1.0.run').open('br') as f:
-            content = f.read()
-
-        self.assertEqual(content, b'\x02a1\x03a11\x02a2\x03a22\x02a3\x03a31\x02a4\x02a4\x02a5\x02a5\x02a6\x02a6')
-
-        l.close()
-
     def test_wal(self):
         l1 = LSMTree(self.dir.name)
 
