@@ -2,8 +2,26 @@
 
 % Appendix Template
 
-\chapter{Appendix Title Here TODO} % Main appendix title
+\chapter{Code} % Main appendix title
 
-\label{AppendixX} % Change X to a consecutive letter; for referencing this appendix elsewhere, use \ref{AppendixX}
+\label{Appendix-A-code} % Change X to a consecutive letter; for referencing this appendix elsewhere, use \ref{AppendixX}
 
-Write your Appendix content here.
+\section{Key-value store API}
+
+\begin{lstlisting}[language=Python, caption=API function signatures.]
+def get(key: bytes) -> bytes:
+    # retrieves a value associated with the given key.
+    # if empty
+
+def set(key: bytes, value: bytes):
+
+def __sizeof__(self):
+
+def close(self):
+
+def snapshot(self):
+
+def restore(version: Optional[int] = None):
+
+\end{lstlisting}
+    

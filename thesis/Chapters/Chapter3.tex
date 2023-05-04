@@ -4,7 +4,52 @@
 
 \label{Chapter3-implementation}
 
+In this chapter, we will present some high-level design decisions that are common in all our implementations, then we will go through the internals and the implementation details of each of the key-value (KV) stores and finally present we leveraged log-structuring to fullfil the incremental snapshotting property we want our key-value store to have.
+
+\section{Common design decisions}
+
+Firstly, we designed our implementations to expose a common interface (API) to the user.
+This allows for easy benchmarking, testing, and ultimately a fair comparison between the engines.
+The API programmatically is defined in a parent class that the classes corresponding to each engines inherit and extend.
+Firstly, all the engines have a common API. This can be found in appendix \ref{Appendix-A-code}.
+
+
+1. empty value == delet
+2. binary keys and values because allows us to encode the length first for the encoding
+3. disk binary encoding
+4. data under a single directory
+5. engine will rebuild from local files if found. if given remote replica, will
+restore the latest version by default. should be able to rollback
+
 \section{Log-Structured Merge-Tree}
+
+% maybe move these to related work??
+
+The Log-Structured Merge-Tree (LSM-Tree) is a disk-based data structure [\cite{lsmtree}], and one of the most prominent, battle-tested, and well-researched key-value store backend engines.
+It was invented by Patrick O'Neil in 1996 and has since been used in multiple databases, such as Google's LevelDB [\cite{leveldb}], Meta's RocksDB [\cite{rocksdb}] and Apache's Cassandra [\cite{cassandra}].
+
+The LSM-Tree makes extensive use of the \textit{log-structuring} technique, which first appeared in the LFS file system [\cite{lsm-filesystem}] and has since been used not only in LSM-Tree-based database management systems, but also in other types of storage engines, even B-Tree-based ones [\cite{llama}].
+
+Log-structuring offers significant speedups by significantly reducing the number of writes per page and transforming them into a "sequential" format.
+In other words, it consolidates numerous random writes into a single large multi-page write [\cite{llama}].
+
+In this work, we use log-structuring extensively, because, besides its advantages in I/O operations, it also provides a straightforward way to create incremental snapshots of the database's state.
+We analyze the way we leveraged log-structuring for incremental snapshotting later, in section \ref{section-incremental-snapshots}.
+
+Given the close relationship between log-structuring and the LSM-Tree (which makes extensive use of it), we will introduce the concept in tandem with the LSM-Tree.
+
+\subsection{Design}
+
+The power of the LSM-Tree can be partially attributed to the fact that it uses lightweight indices, when compared to B-trees which effectively double the cost of every I/O operation to maintain their indices [\cite{lsmtree}].
+This enables the LSM-Tree to scale to very high write and read rates.
+
+However, one other important factor for the LSM-Tree's fast I/O is the use of an in-memory buffer, which aggregates the updates and when it's full, it flushes them to disk sequentially.
+As it is well known, disks perform much faster sequential operations that operations than require random-access, especially in the cloud, where inexpensive disks have limited I/O rates [\cite{llama}].
+
+This buffer flushes the aggregated data into \textit{sorted} chunks of data that are commonly referred to as SSTs for ``Sorted String Tables'', but we will just call them ``runs''.
+Sorting is essential for indexing, as it enables us to lookup keys in logarithmic time.
+
+So, initially, as we are writing data, we keep them in our buffer, and when this buffer is full, we flush it into a file that we call a run.
 
 % LSMT with size-tiered compaction (write-optimized)
 
@@ -27,3 +72,6 @@
 % concurrency! explain how it can be applied, what to lock etc.
 % mmap for the files
 % checksums for malformed records
+
+\section{Incremental Snapshots}
+\label{section-incremental-snapshots}
