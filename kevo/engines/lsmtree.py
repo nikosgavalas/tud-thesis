@@ -132,19 +132,20 @@ class LSMTree(KVStore):
         assert type(key) is bytes and type(value) is bytes
         assert 0 < len(key) <= self.max_key_len and len(value) <= self.max_value_len
 
+        if key not in self.memtable:
+            self.memtable_bytes_count += len(key) + len(value)
+
         # NOTE maybe i should write after the flush?
         # cause this way the limit is not a hard limit, it may be passed by up to 255 bytes
         self.memtable[key] = value
-        new_bytes_count = self.memtable_bytes_count + len(key) + len(value)
 
-        if new_bytes_count > self.memtable_bytes_limit:
+        if self.memtable_bytes_count > self.memtable_bytes_limit:
             # normally I would allocate a new memtable here so that writes can continue there
             # and then give the flushing of the old memtable to a background thread
             self.flush()
         else:
             # write to wal
             self._write_kv_pair(self.wal_file, key, value)
-            self.memtable_bytes_count = new_bytes_count
 
     def merge(self, level_idx: int):
         level = self.levels[level_idx]
@@ -289,6 +290,10 @@ class LSMTree(KVStore):
         self.flush()
         if self.replica:
             self.replica.restore(max_per_level=self.max_runs_per_level, version=version)
+            # close open file descriptors first
+            for rfds in self.rfds:
+                for rfd in rfds:
+                    rfd.close()
             self.rebuild_indices()
 
     def __sizeof__(self):
