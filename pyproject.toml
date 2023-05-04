@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kevo"
-version = "1.0.1"
+version = "1.0.2"
 authors = [{ name="Nikos Gavalas" }]
 description = "Key-value store with 3 backend engines"
 readme = "README.md"
