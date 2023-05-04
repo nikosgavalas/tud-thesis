@@ -296,10 +296,17 @@ class HybridLog(KVStore):
 
     def snapshot(self):
         self.flush(self.tail_offset)
+        self.ro_offset = self.tail_offset
 
     def restore(self, version=None):
         if self.replica:
-            self.replica.restore(max_per_level=self.max_runs_per_level, version=None)
+            self.replica.restore(max_per_level=self.max_runs_per_level, version=version)
+            # close open file descriptors before rebuilding
+            if self.wfd is not None:
+                self.wfd.close()
+            for rfds in self.rfds:
+                for rfd in rfds:
+                    rfd.close()
             self.rebuild_indices()
 
     def __sizeof__(self):
