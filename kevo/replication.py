@@ -90,14 +90,15 @@ class SimpleReplica(Replica):
         # using os.path.basename to be sure
         filename = os.path.basename(filename)
         src_path = os.path.join(self.src_dir_path, filename)
-        filesize = os.path.getsize(src_path)
-        if self.network_latency_per_byte > 0:
-            sleep(self.network_latency_per_byte * filesize)
-        # copy it over
-        shutil.copy(
-            src_path,
-            os.path.join(self.remote_dir_path, filename)
-        )
+        if os.path.isfile(src_path):
+            filesize = os.path.getsize(src_path)
+            if self.network_latency_per_byte > 0:
+                sleep(self.network_latency_per_byte * filesize)
+            # copy it over
+            shutil.copy(
+                src_path,
+                os.path.join(self.remote_dir_path, filename)
+            )
 
     def get(self, filename, version=None):
         shutil.copy(
