@@ -26,9 +26,11 @@ class LSMTree(KVStore):
                  max_runs_per_level=3,
                  density_factor=20,
                  memtable_bytes_limit=1_000_000,
+                 auto_push=True,
                  replica: Optional[Replica] = None):
         self.type = 'lsmtree'
-        super().__init__(data_dir=data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
+        super().__init__(data_dir=data_dir, max_key_len=max_key_len, max_value_len=max_value_len,
+                         auto_push=auto_push, replica=replica)
 
         assert max_runs_per_level > 1
         assert density_factor > 0
@@ -63,6 +65,8 @@ class LSMTree(KVStore):
     def rebuild_indices(self):
         self.levels = []
         self.rfds: list[list[FileIO]] = [[]]
+
+        self.filenames_to_push.clear()
 
         # do file discovery
         data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if
@@ -229,9 +233,11 @@ class LSMTree(KVStore):
         # sync with remote
         if self.replica:
             # -1 cause next_level was appended to previously
-            self.replica.put(f'L{level_idx + 1}.{len(next_level) - 1}.run')
-            self.replica.put(f'L{level_idx + 1}.{len(next_level) - 1}.pointers')
-            self.replica.put(f'L{level_idx + 1}.{len(next_level) - 1}.filter')
+            self.filenames_to_push.append(f'L{level_idx + 1}.{len(next_level) - 1}.run')
+            self.filenames_to_push.append(f'L{level_idx + 1}.{len(next_level) - 1}.pointers')
+            self.filenames_to_push.append(f'L{level_idx + 1}.{len(next_level) - 1}.filter')
+            if self.auto_push:
+                self.push_files()
 
         # cascade the merging recursively
         if len(next_level) >= self.max_runs_per_level:
@@ -268,9 +274,11 @@ class LSMTree(KVStore):
             filter_file.write(filter.serialize())
 
         if self.replica:
-            self.replica.put(f'L{flush_level}.{n_runs}.run')
-            self.replica.put(f'L{flush_level}.{n_runs}.pointers')
-            self.replica.put(f'L{flush_level}.{n_runs}.filter')
+            self.filenames_to_push.append(f'L{flush_level}.{n_runs}.run')
+            self.filenames_to_push.append(f'L{flush_level}.{n_runs}.pointers')
+            self.filenames_to_push.append(f'L{flush_level}.{n_runs}.filter')
+            if self.auto_push:
+                self.push_files()
 
         # reset WAL
         self.wal_file.close()
@@ -284,6 +292,8 @@ class LSMTree(KVStore):
 
     def snapshot(self):
         self.flush()
+        if not self.auto_push:
+            self.push_files()
 
     def restore(self, version=None):
         # flush first to empty the memtable

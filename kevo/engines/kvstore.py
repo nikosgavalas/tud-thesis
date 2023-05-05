@@ -24,6 +24,7 @@ class KVStore:
                  data_dir='./data',
                  max_key_len=255,
                  max_value_len=255,
+                 auto_push=True,
                  replica=None):
 
         self.data_dir = Path(data_dir)
@@ -36,6 +37,9 @@ class KVStore:
         self.val_enc_len = bytes_needed_to_encode_len(self.max_value_len)
 
         self.replica = replica
+
+        self.auto_push = auto_push
+        self.filenames_to_push = []
 
         self.metadata = {}
         self.metadata_path = self.data_dir / 'metadata'
@@ -71,6 +75,18 @@ class KVStore:
         fd.write(value)
         if flush:
             fd.flush()
+
+    def push_files(self):
+        if self.replica:
+            if self.auto_push:
+                self.filenames_to_push.reverse()
+                while self.filenames_to_push:
+                    self.replica.put(self.filenames_to_push.pop())
+            else:
+                uniq = set(self.filenames_to_push)
+                while uniq:
+                    self.replica.put(uniq.pop())
+                self.filenames_to_push.clear()
 
     # abstract methods
     def __getitem__(self, key):

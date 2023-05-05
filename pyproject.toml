@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kevo"
-version = "1.0.2"
+version = "2.0.0"
 authors = [{ name="Nikos Gavalas" }]
 description = "Key-value store with 3 backend engines"
 readme = "README.md"
@@ -19,6 +19,7 @@ dependencies = [
     'bitarray >= 2.6.2, < 3',
     'mmh3 >= 3.0.0, < 4',
     'minio >= 7.1.14, < 8',
+    'jupyterlab'
 ]
 
 [tool.setuptools]

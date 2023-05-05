@@ -15,9 +15,11 @@ class AppendLog(KVStore):
                  max_value_len=255,
                  max_runs_per_level=3,
                  threshold=4_000_000,
+                 auto_push=True,
                  replica: Optional[Replica] = None):
         self.type = 'appendlog'
-        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
+        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len,
+                         auto_push=auto_push, replica=replica)
 
         # about state:
         # the state here, runs_per_level, contrary to the LSMTree implementation, keeps track
@@ -60,6 +62,8 @@ class AppendLog(KVStore):
             self.rebuild_indices()
 
     def rebuild_indices(self):
+        self.filenames_to_push.clear()
+
         # do file discovery
         data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if f.is_file()]
         self.levels = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
@@ -137,7 +141,9 @@ class AppendLog(KVStore):
         self.wfd.close()
 
         if self.replica:
-            self.replica.put(self.wfd.name)
+            self.filenames_to_push.append(self.wfd.name)
+            if self.auto_push:
+                self.push_files()
 
         self.levels[0] += 1
         if self.levels[0] >= self.max_runs_per_level:
@@ -169,7 +175,9 @@ class AppendLog(KVStore):
         dst_file.close()
 
         if self.replica:
-            self.replica.put(dst_file.name)
+            self.filenames_to_push.append(dst_file.name)
+            if self.auto_push:
+                self.push_files()
 
         self.rfds[next_level].append((self.data_dir / f'L{next_level}.{next_run}.run').open('rb'))
 
@@ -189,6 +197,8 @@ class AppendLog(KVStore):
 
     def snapshot(self):
         self.close_run()
+        if not self.auto_push:
+            self.push_files()
 
     def restore(self, version=None):
         self.close_run()

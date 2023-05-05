@@ -63,9 +63,11 @@ class HybridLog(KVStore):
                  flush_interval=(4 * 2 ** 10),
                  hash_index='dict',
                  compaction_enabled=False,
+                 auto_push=True,
                  replica: Optional[Replica] = None):
         self.type = 'hybridlog'
-        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, replica=replica)
+        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len,
+                         auto_push=auto_push, replica=replica)
 
         assert max_runs_per_level > 1
         assert flush_interval > 0
@@ -106,6 +108,8 @@ class HybridLog(KVStore):
 
     def rebuild_indices(self):
         self.hash_index = {}
+
+        self.filenames_to_push.clear()
 
         self.la_to_file_offset = {}
 
@@ -215,7 +219,9 @@ class HybridLog(KVStore):
             self.compaction(self.levels[0])
 
         if self.replica:
-            self.replica.put(self.wfd.name)
+            self.filenames_to_push.append(self.wfd.name)
+            if self.auto_push:
+                self.push_files()
 
         self.levels[0] += 1
         if self.levels[0] >= self.max_runs_per_level:
@@ -249,7 +255,9 @@ class HybridLog(KVStore):
         dst_file.close()
 
         if self.replica:
-            self.replica.put(dst_file.name)
+            self.filenames_to_push.append(dst_file.name)
+            if self.auto_push:
+                self.push_files()
 
         self.rfds[next_level].append((self.data_dir / f'L{next_level}.{next_run}.run').open('rb'))
 
@@ -297,6 +305,8 @@ class HybridLog(KVStore):
     def snapshot(self):
         self.flush(self.tail_offset)
         self.ro_offset = self.tail_offset
+        if not self.auto_push:
+            self.push_files()
 
     def restore(self, version=None):
         if self.replica:

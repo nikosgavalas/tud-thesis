@@ -168,3 +168,38 @@ def lineplot(data, x, y, filename,
     \label{{fig:{filename}}}
 \end{{figure}}
 ''')
+
+def barplot(data, x, y, filename,
+             hue=None,
+             title=None, ylim=None,
+             caption=None, X=None, Y=None,
+             save=True, show=False):
+    filename += '.png'
+    plot = sns.barplot(data=data, x=x, y=y, hue=hue)
+    if title:
+        plot.set_title(title)
+    if X:
+        plot.set_xlabel(X)
+    if Y:
+        plot.set_ylabel(Y)
+    if ylim is not None:
+        plot.set(ylim=ylim)
+
+    fig = plot.get_figure()
+
+    if save:
+        fig.savefig(f"{figures_dir}/{filename}")
+    if show:
+        plt.show()
+
+    if not caption:
+        caption = filename
+
+    print(f'''
+\\begin{{figure}}[h]
+    \centering
+    \includegraphics[width=0.25\\textwidth]{{{filename}}}
+    \caption{{{caption}}}
+    \label{{fig:{filename}}}
+\end{{figure}}
+''')

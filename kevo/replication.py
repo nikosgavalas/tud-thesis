@@ -1,5 +1,6 @@
 import os
 import shutil
+from time import sleep
 from collections import defaultdict
 
 from minio import Minio, S3Error
@@ -71,7 +72,54 @@ class Replica:
         raise NotImplementedError
 
 
+class SimpleReplica(Replica):
+    # use when snapshotting manually
+    # useful only for tests for now...
+    # change network_latency_per_byte to simulate network
+    def __init__(self, src_dir_path, remote_dir_path, network_latency_per_byte=10**(-9)):
+        # NOTE: works with files of the format L0.0.run-1
+        super().__init__(src_dir_path)
+
+        self.remote_dir_path = remote_dir_path
+        self.network_latency_per_byte = network_latency_per_byte
+
+        if not os.path.isdir(self.remote_dir_path):
+            os.mkdir(self.remote_dir_path)
+
+    def put(self, filename):
+        # using os.path.basename to be sure
+        filename = os.path.basename(filename)
+        src_path = os.path.join(self.src_dir_path, filename)
+        filesize = os.path.getsize(src_path)
+        if self.network_latency_per_byte > 0:
+            sleep(self.network_latency_per_byte * filesize)
+        # copy it over
+        shutil.copy(
+            src_path,
+            os.path.join(self.remote_dir_path, filename)
+        )
+
+    def get(self, filename, version=None):
+        shutil.copy(
+            os.path.join(self.remote_dir_path, filename),
+            os.path.join(self.src_dir_path, filename)
+        )
+
+    def gc(self):
+        raise NotImplementedError()
+
+    def restore(self, max_per_level, version=None):
+        # restores nothing.
+        os.makedirs(self.remote_dir_path, exist_ok=True)
+        shutil.rmtree(self.src_dir_path)
+        os.mkdir(self.src_dir_path)
+
+    def destroy(self):
+        shutil.rmtree(self.remote_dir_path)
+
+
 class PathReplica(Replica):
+    # use for automatic replication.
     def __init__(self, src_dir_path, remote_dir_path):
         # NOTE: works with files of the format L0.0.run-1
         super().__init__(src_dir_path)
