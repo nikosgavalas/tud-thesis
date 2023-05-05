@@ -39,6 +39,7 @@ We analyze the way we leveraged log-structuring for incremental snapshotting lat
 Given the close relationship between log-structuring and the LSM-Tree (which makes extensive use of it), we will introduce the concept in tandem with the LSM-Tree.
 
 \subsection{Design}
+\label{subsection-lsm-design}
 
 The power of the LSM-Tree can be partially attributed to the fact that it uses lightweight indices, when compared to B-trees which effectively double the cost of every I/O operation to maintain their indices [\cite{lsmtree}].
 This enables the LSM-Tree to scale to very high write and read rates.
@@ -62,11 +63,10 @@ So, initially, as we are writing data, we keep them in our buffer, and when this
 % this would help with the save to replica things
 
 
-\section{Append Log}
+\section{AppendLog}
 
 
-
-\section{Hybrid Log}
+\section{HybridLog}
 
 % possible extensions/optimizations applicable to all engines:
 % concurrency! explain how it can be applied, what to lock etc.

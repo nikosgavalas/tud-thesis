@@ -4,4 +4,53 @@
 
 \label{Chapter4-evaluation}
 
-\section{TODO}
+% TODO write some intro here
+
+\section{Parameters}
+
+Each of our implemented key-value stores is instantiated with a set of parameters. In Chapter \ref{Chapter3-implementation} we explained what each parameter represents, but to be able to understand the trade-offs among them, and how various settings of them influence the behaviour of the respective engine, it is important to explore them visually.
+
+\subsection{Log-structured Merge-Tree}
+
+The first parameter of the LSM-Tree is \verb"max_runs_per_level". This controls the maximum amount of runs allowed in a level when log-structuring and will be more carefully examined in the subsection \ref{subsection-max-runs-per-level} as it is relevant to the other engines as well.
+
+\subsubsection{Density Factor}
+
+The \verb"density_factor", as explained in section \ref{subsection-lsm-design}, controls the width of gaps between the fence pointers of the LSM-Tree.
+
+
+
+% TODO show density factor, read throughput vs memory/diskspace
+
+% TODO memtable bytes limit, read throughput vs memory usage
+
+\subsection{HybridLog}
+
+% TODO show mem_seg_length, read/write throughput vs memory
+
+% TODO show ro_lag_interval, read/write throughput vs memory
+
+% TODO compaction, does it affect the system?
+
+\subsection{AppendLog}
+
+% TODO threshold
+
+\subsection{Number of runs per level in Log-structuring}
+\label{subsection-max-runs-per-level}
+
+% TODO show runs per level, how influences read-write perf.
+% with rpl up, write throughput should go up, reads down.
+
+\section{Comparison}
+
+% for uniform distribution:
+%   - write latency vs throughput, 3 engs, 50p/95p
+%   - read latency vs throughput, 3 engs, 50p/95p
+%   - keep track of memory as well, 3engs
+
+% then for zipfian, same
+
+\section{Incremental Snapshotting}
+
+% show snapshot time vs state size
