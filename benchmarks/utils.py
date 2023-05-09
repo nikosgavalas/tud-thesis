@@ -136,6 +136,7 @@ def run(klens, vlens, n_items_list, n_ops_list,
 
 def lineplot(data, x, y, filename,
              hue=None, style=None,
+             logx=False, rotatex=False,
              title=None, ylim=None,
              caption=None, X=None, Y=None,
              save=True, show=False):
@@ -149,6 +150,10 @@ def lineplot(data, x, y, filename,
         plot.set_ylabel(Y)
     if ylim is not None:
         plot.set(ylim=ylim)
+    if logx:
+        plot.set(xscale='log')
+    if rotatex:
+        plot.set_xticklabels(plot.get_xticklabels(), rotation=30)
 
     fig = plot.get_figure()
 
