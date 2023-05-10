@@ -20,7 +20,7 @@ For the following demonstrations, we use by default - unless explicitly stated o
 
 The first parameter of the LSM-Tree is \verb"max_runs_per_level". This controls the maximum amount of runs allowed in a level. As explained in Chapter \ref{Chapter3-implementation}, as the number of runs per level increases, a log-structured database becomes write-optimized, and when it is kept close to 1, the database is optimized for reads. In figure \ref{fig:max-runs-per-level} we demonstrate this behaviour:
 
-\begin{figure}[H]
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{max_runs_per_level_write.png}
@@ -42,7 +42,7 @@ This parameter is central, and relevant not only to the LSM-Tree but to the othe
 \subsubsection{Density Factor}
 The \verb"density_factor", as explained in section \ref{subsection-lsm-design}, controls the width of gaps between the fence pointers of the LSM-Tree.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{density_factor_write.png}
@@ -55,7 +55,7 @@ The \verb"density_factor", as explained in section \ref{subsection-lsm-design}, 
     \label{fig:density_factor_write_read}
 \end{figure}
 
-\begin{figure}[H]
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{density_factor_mem.png}
@@ -76,7 +76,7 @@ However, there is an obvious tension here: we cannot keep the density factor too
 
 The size of the LSM-Tree's memtable, controlled by the \verb"memtable_bytes_limit", is the amount of bytes the in-memory structure can hold before it flushes to disk.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{memtable_bytes_limit_write.png}
@@ -89,7 +89,7 @@ The size of the LSM-Tree's memtable, controlled by the \verb"memtable_bytes_limi
     \label{fig:memtable-bytes-limit-write-read}
 \end{figure}
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.6\textwidth]{memtable_bytes_limit_mem.png}
     \caption{Memory Usage vs Memtable Size}
@@ -104,7 +104,7 @@ In figure \ref{fig:memtable-bytes-limit-write-read} we notice that as the size o
 
 Besides the indices, HybridLog also keeps a memory segment in memory, which is essentially a ring buffer. The parameter \verb"mem_segment_len" controls the size of this segment. In figure \ref{fig:mem_segment_len_write_read} we see its influence in the latencies of the writes and the reads, and in figure \ref{fig:mem_segment_len_mem.png} we see the memory usage.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{mem_segment_len_write.png}
@@ -118,7 +118,7 @@ Besides the indices, HybridLog also keeps a memory segment in memory, which is e
 \end{figure}
 
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.6\textwidth]{mem_segment_len_mem.png}
     \caption{Memory Usage vs Memory Segment Size}
@@ -135,7 +135,7 @@ The read-only segment size is controlled via the value of \verb"ro_lag_interval"
 
 If this value is big, we expect many in-memory hits, therefore better performance for both writes and reads. This is exactly what we observe in figure \ref{fig:ro_lag_interval}.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{ro_lag_interval_write.png}
@@ -155,7 +155,7 @@ The flush segment, whose size is adjusted via the \verb"flush_interval" paramete
 
 Additionally, it is crucial to ensure that the value is not set too low. If it is set too low, it may impede the speedup of performance from large flushes to disk, which occur sequentially and are therefore fast. Furthermore, setting the value too low may result in numerous small logs that require frequent merges, thus adversely impacting performance. This phenomenon is also illustrated in the same figure \ref{fig:flush_interval_write_read}.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{flush_interval_write.png}
@@ -172,14 +172,14 @@ Additionally, it is crucial to ensure that the value is not set too low. If it i
 
 Regarding compaction, one may wonder if it could offer some speedup in practice, since it could be the case that its potential benefit is implicitly provided during merging already, and the system is just wasting time doing extra unnecessary work.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{compaction_write.png}
     \caption{Write Latency vs Throughput, with Compaction disabled (left) and enabled (right).}
     \label{fig:compaction-write}
 \end{figure}
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{compaction_read.png}
     \caption{Read Latency vs Throughput, with Compaction disabled (left) and enabled (right).}
@@ -196,7 +196,7 @@ This parameter is similar to the \verb"flush_interval" parameter of the HybridLo
 
 \subsubsection{Threshold}
 
-\begin{figure}[H]
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{threshold_write.png}
@@ -222,7 +222,7 @@ In figure \ref{fig:comparison-write} we observe the write latencies of each engi
 When we choose keys using a Zipfian distribution instead, some keys are accessed compared to the Uniform distribution, the LSM-Tree and the HybridLog become faster than earlier, because the Zipfian distribution allows them to better leverage their in-memory buffering structures before flushing, thus reducing I/O operations, and the AppendLog becomes slower, because it lacks any similar buffering method to take advantage of the Zipfian distribution. Among them, the HybridLog is clearly the fastest, precisely because its memory segment with its fast in-place updates of recently written records exploits the Zipfian distribution best.
 
 
-\begin{figure}[H]
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{write-throughput.png}
@@ -237,7 +237,7 @@ When we choose keys using a Zipfian distribution instead, some keys are accessed
     \label{fig:comparison-write}
 \end{figure}
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.6\textwidth]{write-throughput-fit-mem.png}
     \caption{Write Throughtput when data fits the memory}
@@ -248,7 +248,7 @@ When we choose keys using a Zipfian distribution instead, some keys are accessed
 
 Upon examining the latencies for the reads in figure \ref{fig:comparison-read-latencies}, it becomes clear that the HybridLog and AppendLog outperform the LSM-Tree by a large margin. This is because of their fast hash-based in-memory indices and minimal I/O.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.6\textwidth]{read-throughput.png}
     \caption{Read Latencies}
@@ -259,7 +259,7 @@ Upon examining the latencies for the reads in figure \ref{fig:comparison-read-la
 
 HybridLog's superiority as the fastest key-value store comes at the cost of high memory usage, as can be seen in figure \ref{fig:comparison-memory}. Indeed, it is the store with the most in-memory structures, including its main index. After that comes the AppendLog, which also keeps its index in memory. Finally, the LSM-Tree uses the least memory of all, making it ideal for low-memory environments (and also the cheaper option). The components requiring memory in the LSM-Tree are the Bloom filters and the fence pointers, which we keep in memory for fast access.
 
-\begin{figure}[H]
+\begin{figure}[h]
     \centering
     \includegraphics[width=0.6\textwidth]{mem.png}
     \caption{Memory Usage}
@@ -268,11 +268,17 @@ HybridLog's superiority as the fastest key-value store comes at the cost of high
 
 \section{Incremental Snapshotting}
 
-This section focuses on evaluating the incremental snapshotting capabilities of the three log-structured engines. For this experiment, to demonstrate the advantage of having incremental snapshots, we compare the LSM-Tree, HybridLog and AppendLog to ``MemOnly'', which is a naive implementation of a key-value store based on an entirely in-memory hosted HashMap that dumps its whole state to disk every time we want to take a snapshot of it.
+This section focuses on evaluating the incremental snapshotting capabilities of the three log-structured engines. Towards this goal, to demonstrate the advantage of having incremental snapshots, we compare the LSM-Tree, HybridLog and AppendLog to ``MemOnly'', which is a naive implementation of a key-value store based on an entirely in-memory hosted HashMap that dumps its whole state to disk every time we want to take a snapshot of it.
 
-For this experiment, we use keys and values of 2 and 8 bytes respectively (so that the available keys are no more than $2^{16}$ and therefore we will not need too much memory for the indices of HybridLog, AppendLog and MemOnly), and then we write 100K key-value pairs, which translates to a write volume of 1GB since our key-value pairs are of 10 bytes. Then, we write data in small increments of 1KB, and take a snapshot after each increment. Also, to simulate a snapshot over the network, we add an overhead of 1$\mu$s per byte (as if we had a network channel of 1MB/s). The settings for all engines are similar so that the comparison is as fair as possible.
+We do two experiments. In the first, we iterate and write new key-value pairs, taking also a snapshot at the end of each iteration. In the second experiment, we first perform a large write-volume of 1GB, and then we write data in small increments on 1KB, taking a snapshot after each increment.
 
-\begin{figure}[H]
+For both experiments, we use keys and values of 2 and 8 bytes respectively so that the available keys are no more than $2^{16}$ and therefore we will not need too much memory for the indices of HybridLog, AppendLog and MemOnly. Also, to simulate a snapshot over the network, we add an overhead of 1$\mu$s per byte (as if we had a network channel of 1MB/s). The settings for all engines are similar so that the comparison is as fair as possible.
+
+The results of the first experiment are shown in figure \ref{fig:snapshot}. As expected, the naive MemOnly database dumps the whole state at every step, leading to a quadratic increase of the total time taken to take $n$ snapshots, while the other log-structured stores increase linearly. During each snapshotting step, they only dump the new inserts, except from a few cases when some merging takes place and have to push some larger files as well, but still, they perform better than MemOnly.
+
+For the second experiment, where only updates take place, the results can be seen in figure \ref{fig:snapshot-static-state}. Again, as expected, the LSM-Tree, HybridLog and AppendLog only push the updates, while the MemOnly store pushes the whole state every time. By observing the cumulative graph, it is evident that the log-structured stores take snapshots more efficiently than the naive method.
+
+\begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
         \includegraphics[width=1.1\linewidth]{snapshot.png}
@@ -280,16 +286,29 @@ For this experiment, we use keys and values of 2 and 8 bytes respectively (so th
     \end{subfigure}
     \begin{subfigure}{.5\textwidth}
         \centering
-        \includegraphics[width=1.1\linewidth]{snapshot_aggr.png}
+        \includegraphics[width=1.1\linewidth]{snapshot-aggr.png}
         \caption{Cumulative}
     \end{subfigure}
-    \caption{Snapshotting Time vs Write Volume}
-    \label{fig:incremental-snapshots}
+    \caption{Snapshotting Time vs Write Volume, when we increase the state by inserting new records.}
+    \label{fig:snapshot}
 \end{figure}
 
-The results are shown in figure \ref{fig:incremental-snapshots}.
+\begin{figure}[h]
+    \begin{subfigure}{.5\textwidth}
+        \centering
+        \includegraphics[width=1.1\linewidth]{snapshot-static-state.png}
+        \caption{Discrete}
+    \end{subfigure}
+    \begin{subfigure}{.5\textwidth}
+        \centering
+        \includegraphics[width=1.1\linewidth]{snapshot-static-state-aggr.png}
+        \caption{Cumulative}
+    \end{subfigure}
+    \caption{Snapshotting Time vs Write Volume, when state stays the same and we only update it.}
+    \label{fig:snapshot-static-state}
+\end{figure}
 
-The important takeaway from this experiment is that while the cumulative time of the naive snapshotting method increases quadratically, the log-structured incremental methods increase linearly. This distinction can have significant implications in systems that keep large states.
+The important takeaway from these two experiments is that while the cumulative time of the naive snapshotting method increases quadratically at the worst case, the log-structured incremental methods increase linearly. This distinction can have significant ramifications in the performance of systems that keep large states.
 
 % \section{Discussion}
 
