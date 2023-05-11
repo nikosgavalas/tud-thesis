@@ -8,17 +8,17 @@
 
 \section{Parameters}
 
-Each of our implemented key-value stores is instantiated with a set of parameters. In Chapter \ref{Chapter3-implementation} we explained what each parameter represents, but to be able to understand the trade-offs among them, and how various settings of them influence the behaviour of the respective engine, it is important to explore them visually.
+Each of our implemented key-value stores is instantiated with a set of parameters. In Chapter \ref{Chapter3-implementation} we explained what each parameter represents, but to be able to understand the trade-offs among them, and how various settings of them influence the behavior of the respective engine, it is important to explore them visually.
 
 In this section, the experiments performed aim to highlight qualitatively the effect of each parameter and do not constitute stress tests.
 
-For the following demonstrations, we use by default - unless explicitly stated otherwise - the following settings: The randombly generated keys and values have length 4 bytes, the sets of available keys and values have cardinality $10^3$ each, the distribution of picking keys and values from the sets is uniform, the input write and read throughput are $10^3$ writes and $10^3$ reads per second respectively, and for latency measurements that are sampled (to calculate the 50th and the 95th percentile), the number of samples is 10. Also, for the LSM-Tree we use \verb"max_runs_per_level="3, \verb"memtable_bytes_limit="$10^3$, \verb"density_factor="10, and for the parameters of HybridLog we use \verb"mem_segment_len="$10^4$, \verb"ro_lag_interval="$10^3$, \verb"flush_interval="$10^3$, and \verb"compaction_enabled=False".
+For the following demonstrations, we use by default - unless explicitly stated otherwise - the following settings: The randomly generated keys and values have length 4 bytes, the sets of available keys and values have cardinality $10^3$ each, the distribution of picking keys and values from the sets is uniform, the input write and read throughput are $10^3$ writes and $10^3$ reads per second respectively, and for latency measurements that are sampled (to calculate the 50th and the 95th percentile), the number of samples is 10. Also, for the LSM-Tree we use \verb"max_runs_per_level="3, \verb"memtable_bytes_limit="$10^3$, \verb"density_factor="10, and for the parameters of HybridLog we use \verb"mem_segment_len="$10^4$, \verb"ro_lag_interval="$10^3$, \verb"flush_interval="$10^3$, and \verb"compaction_enabled=False".
 
 \subsection{LSM-Tree}
 
 \subsubsection{Max Runs per Level}
 
-The first parameter of the LSM-Tree is \verb"max_runs_per_level". This controls the maximum amount of runs allowed in a level. As explained in Chapter \ref{Chapter3-implementation}, as the number of runs per level increases, a log-structured database becomes write-optimized, and when it is kept close to 1, the database is optimized for reads. In figure \ref{fig:max-runs-per-level} we demonstrate this behaviour:
+The first parameter of the LSM-Tree is \verb"max_runs_per_level". This controls the maximum amount of runs allowed in a level. As explained in Chapter \ref{Chapter3-implementation}, as the number of runs per level increases, a log-structured database becomes write-optimized, and when it is kept close to 1, the database is optimized for reads. In figure \ref{fig:max-runs-per-level} we demonstrate this behavior:
 
 \begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
@@ -131,7 +131,7 @@ Hence, it is important that we keep this parameter as low as possible. Since it 
 
 \subsubsection{Read-only Segment Size}
 
-The read-only segment size is controlled via the value of \verb"ro_lag_interval". Contrary to the memory segment size, this is the parameter which actually influences directly the probability of an in-memory hit of a key lookup, and thus the cache-like behaviour of the whole memory segment.
+The read-only segment size is controlled via the value of \verb"ro_lag_interval". Contrary to the memory segment size, this is the parameter which actually influences directly the probability of an in-memory hit of a key lookup, and thus the cache-like behavior of the whole memory segment.
 
 If this value is big, we expect many in-memory hits, therefore better performance for both writes and reads. This is exactly what we observe in figure \ref{fig:ro_lag_interval}.
 
@@ -217,7 +217,7 @@ The above settings lead to almost equally sized files on disk, and use the same 
 
 \subsection{Write Latencies}
 
-In figure \ref{fig:comparison-write} we observe the write latencies of each engine as we increase the input throughput. When choosing keys uniformly, HybridLog and AppendLog are significantly faster than the LSM-Tree. This can be attributed to the fast (amortized $O(1)$) hash-based indexing of those engines, versus the LSM-Tree's memtable's data structure, which has an insert complexity of $O(log(n))$. This is also the reason that when we use a state with a size that fits the in-memory structures and therefore does not need to ``spill'' to disk, the HybridLog still performs faster, as can be seen in figure \ref{fig:comparison-write-fit-mem}.
+In figure \ref{fig:comparison-write} we observe the write latencies of each engine as we increase the input throughput. When choosing keys uniformly, HybridLog and AppendLog are significantly faster than the LSM-Tree. This can be attributed to the fast (amortized $\mathcal{O}(1)$) hash-based indexing of those engines, versus the LSM-Tree's memtable's data structure, which has an insert complexity of $\mathcal{O}(\log{}(n))$. This is also the reason that when we use a state with a size that fits the in-memory structures and therefore does not need to ``spill'' to disk, the HybridLog still performs faster, as can be seen in figure \ref{fig:comparison-write-fit-mem}.
 
 When we choose keys using a Zipfian distribution instead, some keys are accessed compared to the Uniform distribution, the LSM-Tree and the HybridLog become faster than earlier, because the Zipfian distribution allows them to better leverage their in-memory buffering structures before flushing, thus reducing I/O operations, and the AppendLog becomes slower, because it lacks any similar buffering method to take advantage of the Zipfian distribution. Among them, the HybridLog is clearly the fastest, precisely because its memory segment with its fast in-place updates of recently written records exploits the Zipfian distribution best.
 
@@ -313,3 +313,18 @@ The important takeaway from these two experiments is that while the cumulative t
 % \section{Discussion}
 
 % TODO table with advantages and disadvantages of each kvstore.
+
+% LSM-Tree: all keys values on disk
+% AppendLog: keys must fit mem
+% HybridLog: keys must fit mem
+% MemOnly: keys and values must fit mem
+
+% HybridLog: fastest performance
+
+% AppendLog: fastest snapshot
+
+% LSM-Tree: fastest recovery, lowest memory
+
+%lsm, append: they dont lose data
+%hybrid log: may lose data
+% although these are not that crucial for our case since we are manually snapshotting

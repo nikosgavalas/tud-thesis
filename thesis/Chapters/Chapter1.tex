@@ -86,14 +86,15 @@ At this point we can form our research questions:
 We summarize this work's contributions in the following points:
 
 \begin{enumerate}
-    \item We have implemented four different key-value stores, as it is crucial to ensure that comparisons are made on a level playing field. This means that all key-value stores have been implemented using the same language and with similar design choices for mutual functionality, such as data encoding and data structures. This approach ensures that only the key-value store logic differs, allowing for fair comparisons.
+    \item We have implemented three different key-value stores, as it is crucial to ensure that comparisons are made on a level playing field. This means that all key-value stores have been implemented using the same language and with similar design choices for mutual functionality, such as data encoding and data structures. This approach ensures that only the key-value store logic differs, allowing for fair comparisons.
     
-    \item We conduct a series of experiments to answer our research questions we posed in section \ref{section-reseach-questions}. Specifically, we analyze the parameters of each implemented key-value store and examine the trade-offs in their designs with respect to resource utilization. We perform a comprehensive comparison among them, evaluate the effectiveness of incremental snapshotting, and ultimately determine whether a key-value store stands out as the best option for our use-case.
+    \item We conduct a series of experiments to answer our research questions we posed in section \ref{section-reseach-questions}. Specifically, we analyze the parameters of each implemented key-value store and examine the trade-offs in their designs with respect to resource utilization. 
+    \item We perform a comprehensive comparison among each key-value store, evaluate the effectiveness of incremental snapshotting, and ultimately determine whether a key-value store stands out as the best option for our use-case.
 \end{enumerate}
 
 \section{Outline}
 
-The rest of this thesis is structured as follows. In Chapter \ref{Chapter2-related-work} we go through the related work. [...TODO]
-Chapter \ref{Chapter3-implementation} contains extensive explanations of the internals of each type of key-value store and the implementation details and design decisions of each of them. [...TODO]
-In Chapter \ref{Chapter4-evaluation}, we evaluate our implementations, performing benchmarks and comparisons between the key-value stores. We discuss the results and answer our reseach questions.
-Finally, in Chapter \ref{Chapter5-conclusion} we conclude by recapitulating the current work and proposing some directions for future reseach. % + mention the limitations of this work.
+The thesis is structured as follows: Chapter \ref{Chapter2-related-work} presents the related work. [...TODO]
+Chapter \ref{Chapter3-implementation} introduces comprehensive descriptions of the internals of each type of key-value store and the implementation details and design decisions that belong to each of them. [...TODO]
+In Chapter \ref{Chapter4-evaluation}, we evaluate our implementations, performing benchmarks and comparisons between the key-value stores. Additionally, we discuss the results obtained and answer our research questions.
+Finally, in Chapter \ref{Chapter5-conclusion} we summarize our research, we present our conclusions and we propose potential directions for future research. % + mention the limitations of this work.

@@ -9,19 +9,29 @@
 \section{Key-value store API}
 
 \begin{lstlisting}[language=Python, caption=API function signatures.]
-def get(key: bytes) -> bytes:
-    # retrieves a value associated with the given key.
-    # if empty
+class KVStore:
+    def __getitem__(self, key: bytes) -> bytes:
+        pass
 
-def set(key: bytes, value: bytes):
+    def __setitem__(self, key: bytes, value: bytes) -> None:
+        pass
 
-def __sizeof__(self):
+    def get(self, key: bytes) -> bytes:
+        pass
 
-def close(self):
+    def set(self, key: bytes, value: bytes) -> None:
+        pass
 
-def snapshot(self):
+    def __sizeof__(self) -> int:
+        pass
 
-def restore(version: Optional[int] = None):
+    def close(self) -> None:
+        pass
 
+    def snapshot(self) -> None:
+        pass
+
+    def restore(self, version: Optional[int] = None) -> None:
+        pass
 \end{lstlisting}
     
