@@ -8,7 +8,7 @@
 
 \section{Key-value store API}
 
-\begin{lstlisting}[language=Python, caption=API function signatures.]
+\begin{lstlisting}[language=Python, caption=Key-value store API - method signatures.]
 class KVStore:
     def __getitem__(self, key: bytes) -> bytes:
         pass
@@ -34,4 +34,40 @@ class KVStore:
     def restore(self, version: Optional[int] = None) -> None:
         pass
 \end{lstlisting}
-    
+
+\section{Replica API}
+
+\begin{lstlisting}[language=Python, caption=Replica API - method signatures.]
+class Replica:
+    def put(self, filename: str) -> None:
+        pass
+
+    def get(self, filename: str, version: int = None):
+        pass
+
+    def gc(self):
+        pass
+
+    def restore(self, max_per_level: int, version: int = None):
+        pass
+
+    def destroy(self):
+        pass
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption=Algorithm used in snapshot rollback.]
+def expand_version(version: int, max_per_level: int) -> list[tuple[int, int]]:
+    acc = []
+    while version != 0:
+        acc.append(version % max_per_level)
+        version //= max_per_level
+
+    levels_runs = []
+    for i, e in enumerate(acc):
+        j = e - 1
+        while j >= 0:
+            levels_runs.append((i, j))
+            j -= 1
+
+    return levels_runs
+\end{lstlisting}

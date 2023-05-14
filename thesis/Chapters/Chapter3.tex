@@ -4,16 +4,16 @@
 
 \label{Chapter3-implementation}
 
-In this chapter, we will first discuss some common high-level design decisions that apply to all of our implementations.
-Following this, we will delve into the specifics of each key-value (KV) store, including their internals and implementation details.
-Lastly, we will demonstrate how we leveraged log-structuring to achieve the desired incremental snapshotting capability of our key-value store.
+This chapter is structured as follows: we begin by discussing some common high-level design decisions that apply to all of our implementations.
+Secondly, we delve into the specifics of each key-value (KV) store, including their internals and implementation details.
+Lastly, we demonstrate how we leveraged log-structuring to achieve the desired incremental snapshotting capability of our key-value store.
 
 \section{Common design decisions}
 
 \subsection{Application Programming Interface}
 
 Firstly, we designed our implementations to expose a common interface (API) to the programmer.
-This allows for easy benchmarking, testing, and ultimately a fair comparison between the engines.
+By doing this we allow for easy benchmarking, testing, and ultimately a fair comparison between the engines.
 The API is programmatically defined within a parent class that is inherited and extended by the classes corresponding to each engine, of which the exact method signatures can be found in appendix \ref{Appendix-A-code}.
 The methods supported are:
 
@@ -21,7 +21,7 @@ The methods supported are:
     \item \verb"get": For retrieving the value of a given key. This operation is called a \textit{read}.
     \item \verb"set": For setting the value of a given key. If the key does not exist, it is inserted in the database with the given value, and if it already exists it is updated to the given value. If the value is empty, this is considered a delete. We refer to all these operations as \textit{writes}.
     \item \verb"close": Closes the database by flushing all buffers and closing all files.
-    \item \verb"snapshot": Takes a snapshot of the current state, by flushing all buffers and pushing the latest created files to a remote directory (more on that in section \ref{section-replicas}).
+    \item \verb"snapshot": Takes a snapshot of the current state, by flushing all buffers and pushing the latest created files to a remote directory (more on that in section \ref{section-snapshots}).
     \item \verb"restore": Using the remote directory, it pull all files  associated with a given version, restoring the state of a specific point in time when a snapshot was taken.
 \end{itemize}
 
@@ -39,7 +39,7 @@ Regarding the encoding of the key-value pairs on disk, we encode each key-value 
     \label{fig:encoding}
 \end{figure}
 
-Another design decision is to store all data in files under one directory on disk, which enables easy backups and management in general. Upon startup, a key-value store will attempt to fetch the latest snapshot, if it has been initiated with a connection to a remote source (either a path in the same machine, which is expected to have been mounted remotely elsewhere, or \textit{minio}, more on that in section \ref{section-replicas}). If a key-value store is not connected to a remote directory, and finds data in its local data directory from a previous run, it will rebuild its indices from this data.
+Another design decision is to store all data in files under one directory on disk, which enables easy backups and management in general. Upon startup, a key-value store will attempt to fetch the latest snapshot, if it has been initiated with a connection to a remote source (either a path in the same machine, which is expected to have been mounted remotely elsewhere, or \textit{minio}, more on that in section \ref{section-snapshots}). If a key-value store is not connected to a remote directory, and finds data in its local data directory from a previous run, it will rebuild its indices from this data.
 
 % TODO mention how the encoding allows us to have keys and values of arbitrary size and we dont need to address the log as an array? see also hybridlog for that.
 % also this encoding is called length encoding...mention that as well
@@ -50,6 +50,7 @@ Another design decision is to store all data in files under one directory on dis
 
 The Log-Structured Merge-Tree (LSM-Tree) is a disk-based data structure [\cite{lsmtree}], and one of the most prominent, battle-tested, and well-researched key-value store backend engines.
 It was invented by Patrick O'Neil in 1996 and has since been used in multiple databases, such as Google's LevelDB [\cite{leveldb}], Meta's RocksDB [\cite{rocksdb}] and Apache's Cassandra [\cite{cassandra}].
+% TODO add the others from the paper I found recently.
 
 The LSM-Tree makes extensive use of the \textit{log-structuring} technique, which first appeared in the LFS file system [\cite{lsm-filesystem}] and has since been used not only in LSM-Tree-based database management systems, but also in other types of storage engines, even B-Tree-based ones [\cite{llama}].
 
@@ -57,7 +58,7 @@ Log-structuring offers significant speedups by significantly reducing the number
 In other words, it consolidates numerous random writes into a single large multi-page write [\cite{llama}].
 
 In this work, we use log-structuring extensively, because, besides its advantages in I/O operations, it also provides a straightforward way to create incremental snapshots of the database's state.
-We analyze the way we leveraged log-structuring for incremental snapshotting later, in section \ref{section-incremental-snapshots}.
+We analyze the way we leveraged log-structuring for incremental snapshotting later, in section \ref{section-snapshots}.
 
 Given the close relationship between log-structuring and the LSM-Tree (which makes extensive use of it), we will introduce the concept in tandem with the LSM-Tree.
 
@@ -109,6 +110,10 @@ After these additions, value retrieval looks as follows (see figure \ref{fig:lsm
     \label{fig:lsm.get}
 \end{figure}
 
+% TODO explain how in this file the numbers signify the search order
+
+As a final design choice, we add a write-ahead log (WAL) to make the database more resilient. More specifically, when we write a value to the store, we also write it to an append-only log. Since the log is append-only, it is still fast despite the I/O, and at the same time it allows us to rebuild the memtable by re-inserting the values after a system crash, making the database more fault-tolerant. For our use-case, the trade-off is worth it.
+
 \subsubsection{Tiering vs Leveling}
 
 LSM-Trees come in two flavors, depending on the merging strategy: there are the LSM-Trees that use \textit{tiering} and those that use \textit{leveling} [\cite{compactionary}]. In tiering, we use up to $R$ runs per level, while in leveling we only use one.
@@ -139,24 +144,218 @@ For the bloom filters, we could not use the most popular publicly available impl
 % 2. fence pointers can be used to organize data into compressible blocks
 % 3. the .filter and .pointers files could be embedded to the runfile (and then do a relative seek from the end)
 % this would help with the save to replica things
-% checksums? these are apllicable to all logstruct
+% checksums? these are appllicable to all logstruct
 % as well as compression
 % per level bloomfilters, with a small memory increase
 % fence pointer optimizations see 
 
 \section{AppendLog}
 
+AppendLog is primarily based on \textit{Bitcask} [\cite{bitcask}], a log-structured hash-table key-value store. Bitcask constitutes now one of the backend choices for Riak's, a distributed key-value store. It is an operationaly simple store, but it is precisely its simplicity that makes it fast and robust.
 
+\subsection{Design}
+
+The AppendLog has two main components: a (log-structured) append-only log, and an in-memory hash-table. To understand how it operates and its design, we will start with the writes.
+
+Ignoring log-structuring for now, we assume that we only use an append-only log, and we write key-value pairs to it.
+For every key-value pair we write, we use the hash-table as an index which keeps track of the key-to-offset mapping in this log. The writes in this log are immutable - if we update a key to a new value, we just append it as a new key-value pair. Then, to read the value of a key, we query the in-memory hash-table for key, get the offset, and seek to this offset and read the key-value pair.
+
+This simple design is very fast because it writes data to the disk sequentially, and sequential I/O is faster in both mechanical and solid-state disks. In mechanical HDDs it is faster because the rotational parts of the disk do not have to seek to other positions so they do not add overhead, and in SSDs sequential writes mitigate the phenomenon of \textit{write-amplification} [\cite{write-amplification}].
+
+However, the design so far has a major drawback; it lacks garbage-collection.
+As updates to values are appended, the old values are useless and only take up disk space.
+To solve this issue, we introduce log-structuring to the design, which we have already used in the LSM-Tree implementation to solve a similar problem.
+With log-structuring, we leverage the merging step to drop the old values.
+
+Concretely, as we write values, we use a size-threshold value for the logfile size that when exceeded, we close the log file and start a new one. These logfiles are equivalent to the runfiles in the LSM-Tree's log-structuring scheme.
+Then, we use a second parameter as the upper limit of the number of logfiles.
+When this limit is reached, we merge the files in this run into a new file in the next level and at the same time we update the hash-table index to point to the new location.
+
+This new design decision has the following implication: the index can no longer just point to an offset, as we have multiple files in our log-structured scheme.
+The solution is to simply store the file information in the hash-table alongside the offset, so the index points to the offset of a specific file.
+
+The entire design so far is visualized in figure \ref{fig:appendlog}.
+In this figure, we see an example of a potential snapshot during the operation of an AppendLog instantiated with the parameter of maximum runs per level set to three and maximum key-value capacity per file set to two, right before the merging phase. The first level is full and thus the files \verb|L0.0.run|, \verb|L0.1.run| and \verb|L0.2.run| are about to be merged in \verb|L1.2.run|.
+We notice how the index always points to the latest record.
+In the next section (\ref{appendlog-implementation}) we explain how the merging is implemented.
+
+Compared to the LSM-Tree, the AppendLog has the following advantages:
+\begin{enumerate}
+    \item It offers significantly faster reads, since a value retrieval is essentially a query to an in-memory hash-table, a seek to a file offset and a file read operation. There is no need to search multiple files or lookup multiple data structures.
+    \item It is unencumbered by the overhead that the creation of the fence pointers and the bloom filters add to the LSM-Tree.
+    \item The hash-table index itself is faster than the LSM-Tree's insertions and deletions. The hash-table has an complexity for these operations of (amortized) $\mathcal{O}(1)$ while the memtable is $\mathcal{O}(\log{}(n))$, where $n$ is the number of entries to the memtable.
+\end{enumerate}
+
+The advantages however come at the following costs:
+\begin{enumerate}
+    \item The keys have to all fit in memory, since they have to be hosted to the hash-table. This hampers the scalability of the AppendLog.
+    \item The AppendLog does not perform any buffering before flushing the entries to disk. In some cases this fact may degrade performance. We will analyse this further in the following section, \ref{appendlog-implementation}.
+\end{enumerate}
+
+% TODO i forgot to talk about recovery, index rebuild! also make sure i talk about that in LSM above as well.
+
+% TODO i also forgot to mention how important it is to keep the files open, at least for reading, and how it sped up performance, especially in appendlog
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{appendlog.png}
+    \caption{Example of operation of the AppendLog.}
+    \label{fig:appendlog}
+\end{figure}
+
+\subsection{Implementation}
+\label{appendlog-implementation}
+
+Although the implementation of the AppendLog is straightforward, it does feature certain intricacies that require attention, like the merging strategy and the record flushing.
+
+Regarding merging, the resulting files need to be devoid of invalid records, i.e. key-value pairs that have been updated more recently. This step is important as it is the only garbage-collection mechanism. This can be done in multiple ways using extra memory, but there is in fact a way to achieve it using the already present index without extra memory or modifications. Concretely, for a single file, we read through the file sequentially, going over all the key-value pairs. For each key-value pair that we encounter, we query the index - if the offset that the index returns is equal to the current read offset of the file we are scanning, then this means that this record is indeed the latest for the queried key and must be preserved. Thus, we write it to the merged file, otherwise we drop it and continue to the next read. This process is repeated for the rest of the files in a level, resulting in a single merged file. After that, we can delete the merged files.
+
+One ramification of this merging algorithm is that it compels us to write the keys along with the values on disk, because we need to know the key associated with a value so that we can query the index appropriately, leading us to using more disk space. However, there is no other way to know which record is the latest (and at the same time make this information persistent) without using extra memory, which is more expensive than the disk and also volatile. This is also the approach that Bitcask follows [\cite{bitcask}].
+
+Another intricate point is the flushing of the records. Because the AppendLog does not use any data structure to buffer the writes (at least at the implementation level), we need to flush immediately, otherwise the index may point to an unflushed record and this can lead to an erroneous read. The use of flushing right after a write is necessary, even if it can potentially lead to reduced performance. On the positive side, the AppendLog does not need any write-ahead logging, precisely because it flushes everything immediately.
+
+In the next section we will introduce HybridLog, which uses buffering to avoid flushing immediately.
+% TODO but is volatile.
 
 \section{HybridLog}
 
-\section{Replicas}
-\label{section-replicas}
+The HybridLog is similar to the AppendLog, albeit with a key distinction: contrary to the AppendLog, it does buffer the writes in memory.
 
+The HybridLog is based on the \textit{hybrid log} introduced in Microsoft's KV store \textsc{Faster} [\cite{faster}]. In the following two sections, we will present the design of HybridLog, its differences from the original in \textsc{Faster}, and its implementation details.
+
+\subsection{Design}
+
+\textsc{Faster} in the original work [\cite{faster}] consists of two main components: A special hash-index, and the hybrid log, which spreads across memory and disk, hence the name.
+
+The hash-index in \textsc{Faster} is a concurrent, lock-free, and scalable to the number of threads hash-table. It leverages a framework (introduced in the same work [\cite{faster}]) called \textit{Epoch Protection Framework} for lock-free coordination between the threads. It consists of $2^k$ 64-byte cache-aligned buckets, that each has eight 8-byte entries of which the first seven are for entries and the last one serves as an overflow bucket pointer. Each bucket entry has three parts: a \textit{tentative} bit used for concurrency control, a 15-bit tag and a 48-bit address, which points to a record. Each record has an 8-byte header (16 bits for metadata like \textit{invalid} and \textit{tombstone}, required by some log-structured allocators, and 48 bits for storing the address of the next record, in case of conflicts), then the key that we store and finally its value.
+
+% TODO maybe add a figure with the original hash-index?
+
+These records can either be allocated in memory (using some memory allocator like \textit{jemalloc}), in an append-only log, or in a hybrid log, which combines memory and disk. The hybrid log is a logical log, which holds records that are addressable in a logical address space. This logical address space is presented in figure \ref{fig:logical-address-space}, along with the special offsets of it that denote its three main segments: the segment that resides on disk, starting from offset zero up to the \textit{head offset}, the in-memory read-only segment starting from the head offset all the way to the \textit{read-only offset}, and the mutable segment, also in-memory, from the read-only offset onwards. There is also the \textit{tail offset} which points at the offset of the last record.
+The logical segments themselves are implemented as follows: the area residing on disk is an abstraction of log-structured files, and the area residing in memory is a ring buffer.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{logical-address-space.png}
+    \caption{Logical Address Space used in HybridLog.}
+    \label{fig:logical-address-space}
+\end{figure}
+
+As records are written to the HybridLog, we first insert them to the tail of the ring buffer, we update the hash-index, and we move the tail offset further.
+At every write, we also query the hash-index; if a key exists already in the mutable area, it is updated \textit{in-place}.
+As we write new key-value pairs and the mutable area grows (because the tail offset moves towards higher logical addresses), we move the read-only offset too if needed, so that it stays behind the tail offset at a constant lag. This lag is configurable as an instantiation parameter of the HybridLog.
+
+The records in the read-only area, as the name implies, are immutable. That is, when a write occurs on a key that is already present in that area, it is copied to the mutable area and updated there, which in the original work [\cite{faster}] is called a \textit{read-copy-update}. In our design we simplified a bit this procedure and we just do a new insert of the key-value pair with the new value in the mutable area.
+
+Like with the read-only offset, we also maintain the head offset, which also has to stay at a constant lag behind the read-only offset, and this lag (or interval) is also configurable as an instantiation parameter.
+When the gap in the logical addresses between the head offset and the read-only offset reaches the defined value of the interval, we flush all the read-only records to disk, i.e. the entire read-only area, and move the head offset to the last logical address that resides on disk, just before the read-only offset.
+
+To retrieve a value, we first query the hash-index; if the key does not exist in the index, we just return the empty value (zero bytes). If the key exists and has a logical offset greater than the head offset, it lies in memory so we retrieve it from the ring buffer. If it resides on disk, we translate the offset appropriately and retrieve it from one of the files by doing a seek and a read operation.
+
+The disk area is log-structured, in the same way that AppendLog is - they both use the same merging strategy for their files, and they both use the same value retrieval method to retrieve values from the files.
+
+It is important to notice how the buffering policy acts like a cache for the writes.
+The in-memory updates and the read-copy-update from the read-only area exploits the temporal locality of keys.
+Therefore, this design choice should accelerate workloads with strong temporal locality. Also, the buffering stage does not require continuous flushing of the records by design, turning a succession of frequent small flushes into a large one. This behavior by itself yields faster writes. The downside of this (because no design choice comes without trade-offs) is that we have volatile records. If the system suddenly crushes, we inevitably lose the unflushed records.
+
+To address the issue of potentially lost records, the authors of the original work [\cite{faster}] suggest using a write-ahead log as a workaround.
+Similarly to the approach we took with the LSM-Tree, a write-ahead log can provide a reliable record of updates and help ensure data consistency in the event of system failures.
+% authors also argue that the wal is not actually needed, checkpointing mechanism instead, but dont elaborate.
+
+\subsection{Implementation}
+
+The implementation of the HybridLog essentially extends the implementation of the AppendLog by replacing the hash-index, adding the ring buffer, and also adding some logic to support the translation of the logical addresses.
+
+The first step of our implementation is the hash-index. Because Python (the language of the implementation) does not allow low-level memory management, we had to simplify the design.
+The simplified design can be seen in figure \ref{fig:hash-index}.
+The index consists of a Python list that holds ``buckets''.
+Each bucket is itself a list of length 8. The first 7 entries are integers, of which the upper bits hold the keys and the lower bits the values (which will be used to hold the logical addresses). The last entry holds the index of the next bucket, in case of overflow.
+New buckets are allocated at the end of the list holding the buckets.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{hash-index.png}
+    \caption{Hash-index of HybridLog.}
+    \label{fig:hash-index}
+\end{figure}
+
+To lookup a key in this hash-index, we hash it first using the MurmurHash3 hash function which is suitable for hash-based lookups, we calculate the modulo of the hash with the initial number of buckets, and then we follow the buckets, scanning the entries for the key, until we exhaust the buckets.
+
+To insert or update a new key, we first perform a lookup. If we find the key in some bucket, we update its value. Otherwise, we scan for an empty space an insert the key-value pair. If there is no room, we allocate a new bucket and set the last bucket to point to it. When the inserted key-value pairs reach 75\% of the total capacity of the bucket, we resize it by allocating a new one with double the capacity ($2^{k+1}$ buckets if the previous one had $2^{k}$) and copy over the existing records. Deletion is implemented an update of the key's value to the empty value.
+
+Another simplification that is necessary is the removal of the epoch-protection framework. Again, since we are working in Python and we do not have access to low-level threading capabilities, we did not implement the framework.
+
+After implementing the simplified hash-index, we realized that it is actually quite slow, about three times slower than a Python dictionary. Upon reflection, the reduced performance appears to have been a predictable outcome, since it is implemented entirely in Python, while Python's dictionary is implemented in C and bypasses all the overhead that the high-level features of an interpreted language like Python add.
+
+Thus, we continued the implementation using the Python dictionary as the backend for the hash-index. This choice, in addition to the dictionary being faster, is supported by two more reasons:
+\begin{enumerate}
+    \item It allows for fairer comparisons in the evaluations and comparisons in Chapter \ref{Chapter4-evaluation}, because the other engines also use the Python dictionary as a HashMap, especially AppendLog which uses the dictionary as its main index as well.
+    \item We do not have any limitations about the key's length anymore.
+\end{enumerate}
+
+After the hash-index implementation, our attention turned to the ring buffer.
+This data structure is represented in Python as a list with two pointers, one for reading and one for writing, which wrap around the list in a circular fashion.
+To achieve this, we calculate the respective buffer offsets using the modulo operation with the buffer's length.
+This approach allows for efficient and continuous data processing within the buffer, without the need for costly buffer reallocations or data movement.
+
+Then, we implemented the logic for the flushing to disk, along with the log-structuring. Every time the lag between the head offset and the read-only offset reaches the corresponding predefined interval limit (given as a constructor argument), a flush occurs of the read-only area of the ring buffer. Each flush creates a new file. When the number of the files reaches a given threshold, a merge is triggered, which merges the files into one, placed in the next level in our log-structured setup, exactly like we do with the AppendLog.
+
+To improve the efficiency of the merging process in the HybridLog, we have implemented a garbage-collection mechanism called \textit{compaction} that is triggered before merging. This feature is optional and can be enabled as needed. By performing some of the garbage-collection work on flushed files before merging, we can distribute the total workload more evenly during the operation of the HybridLog. This, in turn, allows for faster and more streamlined merging, as some of the work that would typically be done during merging has already been completed. We evaluate its effectiveness in Chapter \ref{Chapter4-evaluation}.
+
+The next checkpoint of the implementation is the logical address translation. The logical addresses need to be mapped to offsets of the ring buffer or offsets of files. For the ring buffer, the mapping is straightforward: we just use the modulo operator and the size of the buffer. For the disk, we used a Python dictionary which maps a logical offset to a specific offset of a specific file. This decision uses extra memory, but cannot be avoided. In \textsc{Faster}, the authors use an allocator which also uses extra memory behind the scenes. If we had only one logfile and entries with fixed length, we could have had a one-to-one address translation between the logical offsets and the file offsets by adding or subtracting a constant every time, but giving up on log-structuring and the freedom to use whatever length for our keys and values is not worth the trade-off.
+
+% concern: what happens with overflow of the 48bits?
+
+% TODO talk a bit about recovery, after you do so to the previous engines as well cause you forgot.
+
+\section{Snapshots}
+\label{section-snapshots}
+
+In the context of distributed systems, fault tolerance is central.
+Replication is one of the most effective methods that systems employ to achieve fault tolerance. By storing copies of data across multiple nodes, replication can help ensure that the system remains available even if some of its nodes fail.
+
+As we design state storage backends, it is important to provide the user with interfaces that allow for remote storage of the state and the ability to access different versions of that state. This includes the ability to roll back to previous versions of it if necessary.
+
+In this section we will look into the method we implemented for creating snapshots efficiently from our log-structured key-value stores, as well storing them in remote storage, and restoring previous versions of it.
+
+\subsection{Replicas}
+
+First of all we define an abstraction we call \textit{Replica}.
+The replica is an abstraction for remote storage.
+The endpoints it exposes to the user are the following:
+
+\begin{enumerate}
+    \item \verb|put|: Uploads a file to the remote storage.
+    \item \verb|get|: Fetches a file from the remote storage. By default it fetches the latest version but a previous version of it can be retrieved as well.
+    \item \verb|gc|: Keeps only the files associated with the latest version and deletes the rest to free up storage space.
+    \item \verb|restore|: Retrieves all the files associated with a given version.
+    \item \verb|destroy|: Deletes the remote storage with all the files in it.
+\end{enumerate}
+
+The exact method signatures can be found in appendix \ref{Appendix-A-code}.
+
+For the backend of the replicas we have two implementations: A directory in the local filesystem (to which a remote directory can be mounted) called \verb|PathReplica|, and a bucket in the S3 compatible object store \textit{minio} for cloud setups.
+
+To connect a remote storage to one of the key-value stores, the user creates an instance of a replica type of choice and passes it as a constructor argument when instantiating the key-value store.
+
+If a replica is given to a store, the store will prioritize it over local files for recovery. Instead of performing file discovery at the local data directory to rebuild the indices and the in-memory data-structures from the local pre-existing files, the store will query the remote for the latest version saved. If no version exists, the store starts anew, otherwise it fetches the files of the latest version and uses those to recover the state of that version.
+
+\subsection{Incremental Snapshots}
+
+Every time a key-value store creates a file, it uploads it automatically to the remote storage via the replica. The replica maintains a map that maps filenames to their latest versions and \textit{does not overwrite files}. Instead, if for example a file is uploaded a second time with the same filename, the replica will keep both files under different versions.
+
+We leverage this property in log-structuring as follows: a file in log-structured storage belongs in a level and has a specific ``run index'' within that level, therefore can be characterized by two integers. In the replica, such file is kept under the same two integers plus a third integer for the version. Now as the key-value store operates, new backups of the files are being created in the remote storage and tagged with their versions automatically. A user can also trigger a snapshot manually, which will flush any in-memory records and upload any new files created.
+
+\subsection{Rollback}
+
+Having the versioned files in the remote storage, we can now revert back to old versions.
+We demonstrate the method through an example.
+Assume we want to revert to version $7$, in a log-structured store with a maximum of $3$ runs per level. First, we find which files exactly we need to retrieve by translating the the version into a list, each element of which denotes which runs we need to fetch from which level. In our example, this array would be $[(0, 0), (1, 0), (1, 1)]$, meaning that we have to fetch one file from the first level (file \verb|L0.0|) and two files from the second level (files \verb|L1.0| and \verb|L1.1|). The algorithm for this translation - or ``version-expansion'' - can be found in appendix \ref{Appendix-A-code}.
+
+Once this version has been expanded, we fetch the files we need \textit{at their latest versions}. For this purpose we use the map that the replica maintains internally. Finally, the store rebuilds all indices from those files, as if it has started up and has discovered these files in its local data directory.
+
+% TODO
 % possible extensions/optimizations applicable to all engines:
 % concurrency! explain how it can be applied, what to lock etc.
 % mmap for the files
 % checksums for malformed records
-
-\section{Incremental Snapshots}
-\label{section-incremental-snapshots}

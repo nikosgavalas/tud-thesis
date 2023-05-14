@@ -53,6 +53,8 @@ from kevo.replication import Replica
 class HybridLog(KVStore):
     name = 'HybridLog'
 
+    # TODO make the mem_segment_len equal to the sum of
+    # ro_lag_int + flush_int
     def __init__(self,
                  data_dir='./data',
                  max_key_len=255,
@@ -91,7 +93,7 @@ class HybridLog(KVStore):
 
         self.head_offset: int = 0  # LA > head_offset is in mem
         self.ro_offset: int = 0  # in LA > ro_offset we have the mutable region
-        self.tail_offset: int = 0  # points to the tail of the log, the next free available slot in memory
+        self.tail_offset: int = 0  # points to the tail of the log, the last record inserted
 
         self.levels: list[int] = []
         # read file-descriptors
@@ -216,6 +218,8 @@ class HybridLog(KVStore):
         self.wfd.close()
 
         if self.compaction_enabled:
+            # TODO remove compaction entirely. It is done in-mem when flushing,
+            # there's no need for it at all.
             self.compaction(self.levels[0])
 
         if self.replica:
