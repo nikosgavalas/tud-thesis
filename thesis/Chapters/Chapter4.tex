@@ -255,6 +255,19 @@ Upon examining the latencies for the reads in figure \ref{fig:comparison-read-la
     \label{fig:comparison-read-latencies}
 \end{figure}
 
+\subsection{Recovery Time}
+
+For this experiment, we perform a sequence of writes to each key-value store, and then we close it, restart it, and measure the time that each of them takes to perform file discovery and rebuild all the in-memory data structures (indices etc.).
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.6\textwidth]{recovery.png}
+    \caption{Recovery Times}
+    \label{fig:recovery}
+\end{figure}
+
+The results can be found in figure \ref{fig:recovery}. The LSM-Tree has by far the fastest recovery because it only needs to deserialize and load into memory the Bloom filters and the fence pointers. The other two stores need to fully scan every file and insert the keys and their file offsets to their in-memory indices.
+
 \subsection{Memory}
 
 HybridLog's superiority as the fastest key-value store comes at the cost of high memory usage, as can be seen in figure \ref{fig:comparison-memory}. Indeed, it is the store with the most in-memory structures, including its main index. After that comes the AppendLog, which also keeps its index in memory. Finally, the LSM-Tree uses the least memory of all, making it ideal for low-memory environments (and also the cheaper option). The components requiring memory in the LSM-Tree are the Bloom filters and the fence pointers, which we keep in memory for fast access.
@@ -310,21 +323,41 @@ For the second experiment, where only updates take place, the results can be see
 
 The important takeaway from these two experiments is that while the cumulative time of the naive snapshotting method increases quadratically at the worst case, the log-structured incremental methods increase linearly. This distinction can have significant ramifications in the performance of systems that keep large states.
 
-% \section{Discussion}
+\section{Discussion}
 
-% TODO table with advantages and disadvantages of each kvstore.
+We summarize our observations in table \ref{tab:props}.
 
-% LSM-Tree: all keys values on disk
-% AppendLog: keys must fit mem
-% HybridLog: keys must fit mem
-% MemOnly: keys and values must fit mem
+% TODO comment on the table
 
-% HybridLog: fastest performance
+% Please add the following required packages to your document preamble:
+% \usepackage{booktabs}
+% \usepackage{graphicx}
+\begin{table}[]
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{}                         & \textbf{MemOnly}      & \textbf{LSM-Tree} & \textbf{HybridLog}                                                    & \textbf{AppendLog} \\ \midrule
+\textbf{Spill-to-disk}            & No                    & Yes               & Yes                                                                   & Yes                \\
+\textbf{Strongest point} &
+  Fastest performance &
+  \begin{tabular}[c]{@{}l@{}}Fastest recovery,\\ lowest memory\end{tabular} &
+  \begin{tabular}[c]{@{}l@{}}Fastest performance\\ (with spill-to-disk)\end{tabular} &
+  Fastest snapshot \\
+\textbf{Memory Requirements} &
+  \begin{tabular}[c]{@{}l@{}}Keys and values\\ must fit in mem.\end{tabular} &
+  None &
+  \begin{tabular}[c]{@{}l@{}}Keys must\\ fit in mem.\end{tabular} &
+  \begin{tabular}[c]{@{}l@{}}Keys must\\ fit in mem.\end{tabular} \\
+\textbf{Data Loss (w/o snapshot)} & Will lose all records & None              & \begin{tabular}[c]{@{}l@{}}Will lose\\ unflushed records\end{tabular} & None               \\
+\textbf{Incremental Snapshots}    & No                    & Yes               & Yes                                                                   & Yes               
+\end{tabular}%
+}
+\caption{Summary of the properties of the key-value stores.}
+\label{tab:props}
+\end{table}
 
-% AppendLog: fastest snapshot
-
-% LSM-Tree: fastest recovery, lowest memory
+% TODO comment on the table.
 
 %lsm, append: they dont lose data
 %hybrid log: may lose data
-% although these are not that crucial for our case since we are manually snapshotting
+% **although these are not that crucial for our case since we are manually snapshotting**

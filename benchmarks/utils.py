@@ -64,9 +64,9 @@ def measure_disk_remote(db, distro, keys_set, vals_set, n_ops, engine, eng_comb,
 
 
 def measure_recovery(db, distro, keys_set, vals_set, n_ops, engine, eng_comb, **args):
-    db.close()
     with Timer() as t:
         db = engine(**eng_comb)
+    db.close()
     return [{'metric': 'recovery', 'value': float(t)}]
 
 
