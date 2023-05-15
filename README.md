@@ -1,17 +1,15 @@
 [![Tests](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml/badge.svg)](https://github.com/nikosgavalas/kvstore/actions/workflows/run_tests.yml)
 
-### Incremental Snapshotting in Transactional Dataflow SFaaS Systems
+## Incremental Snapshotting in Transactional Dataflow SFaaS Systems
 
 This repo contains three key-value store implementations:
 1. `LSMTree` with size-tiered compaction, like Apache's [Cassandra](https://cassandra.apache.org/_/index.html).
 2. `HybridLog`, based on Microsoft's [FASTER](https://microsoft.github.io/FASTER/docs/td-research-papers/).
 3. `AppendLog`, similar to Riak's [Bitcask](https://riak.com/assets/bitcask-intro.pdf).
 
-The goal is to compare the performances and determine for which use-cases each
-type is more suitable, specifically in the context of incremental snapshotting
-for state management in (transactional) dataflow SFaaS systems.
+The goal is to compare the performances and determine for which use-cases each type is more suitable, specifically in the context of incremental snapshotting for state management in (transactional) dataflow SFaaS systems.
 
-See a rendered version of my thesis [here](./thesis/main.pdf).
+See a rendered version of my thesis [here](./thesis/main.pdf) (not complete yet).
 
 **Requirements**: See [pyproject.toml](./pyproject.toml).
 
