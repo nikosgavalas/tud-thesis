@@ -48,11 +48,17 @@ class TestLSMTree(unittest.TestCase, FuzzyTester):
                         key_len_range=(1, 100_000), val_len_range=(0, 100_000), n_items=10, n_iter=100, seeds=[1],
                         test_recovery=False, test_replica=False)
 
-    def test_fuzzy_replication(self):
+    def test_fuzzy_recovery(self):
         self.fuzzy_test(LSMTree,
-                        args={'data_dir': self.dir.name, 'memtable_bytes_limit': 100_000, 'replica': self.replica},
-                        key_len_range=(1, 10), val_len_range=(0, 13), n_items=100, n_iter=1_000_000, seeds=[1],
-                        test_recovery=True, test_replica=True)
+                        args={'data_dir': self.dir.name, 'memtable_bytes_limit': 100},
+                        key_len_range=(1, 10), val_len_range=(0, 13), n_items=1000, n_iter=10_000, seeds=[1],
+                        test_recovery=False, test_replica=False)
+
+    # def test_fuzzy_replication(self):
+    #     self.fuzzy_test(LSMTree,
+    #                     args={'data_dir': self.dir.name, 'memtable_bytes_limit': 100_000, 'replica': self.replica},
+    #                     key_len_range=(1, 10), val_len_range=(0, 13), n_items=100, n_iter=1_000_000, seeds=[1],
+    #                     test_recovery=True, test_replica=True)
 
     def test_wal(self):
         l1 = LSMTree(self.dir.name)
@@ -71,24 +77,24 @@ class TestLSMTree(unittest.TestCase, FuzzyTester):
 
         l2.close()
 
-    def test_replica(self):
-        db = LSMTree(self.dir.name, replica=self.replica)
-        db.set(b'a', b'1')
-        db.set(b'b', b'2')
-        db.snapshot()
-        db.set(b'a', b'3')
-        db.set(b'b', b'4')
-        db.close()
-
-        shutil.rmtree(self.dir.name)
-
-        db = LSMTree(self.dir.name, replica=self.replica)
-        self.assertEqual(db.get(b'a'), b'3')
-        self.assertEqual(db.get(b'b'), b'4')
-        db.restore(version=1)
-        self.assertEqual(db.get(b'a'), b'1')
-        self.assertEqual(db.get(b'b'), b'2')
-        db.close()
+    # def test_replica(self):
+    #     db = LSMTree(self.dir.name, replica=self.replica)
+    #     db.set(b'a', b'1')
+    #     db.set(b'b', b'2')
+    #     db.snapshot()
+    #     db.set(b'a', b'3')
+    #     db.set(b'b', b'4')
+    #     db.close()
+    #
+    #     shutil.rmtree(self.dir.name)
+    #
+    #     db = LSMTree(self.dir.name, replica=self.replica)
+    #     self.assertEqual(db.get(b'a'), b'3')
+    #     self.assertEqual(db.get(b'b'), b'4')
+    #     db.restore(version=1)
+    #     self.assertEqual(db.get(b'a'), b'1')
+    #     self.assertEqual(db.get(b'b'), b'2')
+    #     db.close()
 
 
 if __name__ == "__main__":

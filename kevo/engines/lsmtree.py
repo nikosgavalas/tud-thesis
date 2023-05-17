@@ -6,6 +6,7 @@ from collections import namedtuple
 from sys import getsizeof
 from typing import Optional
 from io import FileIO
+import struct
 
 from sortedcontainers import SortedDict
 
@@ -13,7 +14,16 @@ from kevo.common import BloomFilter, FencePointers
 from kevo.engines.kvstore import KVStore
 from kevo.replication import Replica
 
-Run = namedtuple('Run', ['filter', 'pointers'])
+Run = namedtuple('Run', ['filter', 'pointers', 'nr_records'])
+
+
+def append_indices(file_descriptor, fence_pointers, bloom_filter, nr_records):
+    pointers_offset = file_descriptor.tell()
+    file_descriptor.write(fence_pointers.serialize().encode())
+    bloom_offset = file_descriptor.tell()
+    file_descriptor.write(bloom_filter.serialize().encode())
+    # pack two 8 byte unsigned ints for the offsets of the pointers and the bloom filter
+    file_descriptor.write(struct.pack('<QQQ', pointers_offset, bloom_offset, nr_records))
 
 
 class LSMTree(KVStore):
@@ -83,15 +93,17 @@ class LSMTree(KVStore):
             self.levels.append([])
         for level_idx, n_runs in enumerate(levels_lengths):
             for r in range(n_runs):
-                with (self.data_dir / f'L{level_idx}.{r}.pointers').open('r') as pointers_file:
-                    data = pointers_file.read()
-                pointers = FencePointers(from_str=data)
+                with (self.data_dir / f'L{level_idx}.{r}.run').open('rb') as run_file:
+                    # fetch the last 24 bytes (=3*8)
+                    run_file.seek(-24, 2)
+                    offsets = run_file.read()
+                    pointers_offset, bloom_offset, nr_records = struct.unpack('<QQQ', offsets)
+                    run_file.seek(pointers_offset)
+                    pointers = FencePointers(from_str=run_file.read(bloom_offset - pointers_offset).decode())
+                    run_file.seek(bloom_offset)
+                    bloom_filter = BloomFilter(from_str=run_file.read())
 
-                with (self.data_dir / f'L{level_idx}.{r}.filter').open('r') as filter_file:
-                    data = filter_file.read()
-                filter = BloomFilter(from_str=data)
-
-                self.levels[level_idx].append(Run(filter, pointers))
+                self.levels[level_idx].append(Run(bloom_filter, pointers, nr_records))
 
     def close(self):
         self.save_metadata()
@@ -159,9 +171,11 @@ class LSMTree(KVStore):
 
         fence_pointers = FencePointers(self.density_factor)
         # I can replace with an actual accurate count but I don't think it's worth it, it's an estimate anyway
-        filter = BloomFilter(sum([run.filter.est_num_items for run in level]))
+        bloom_filter = BloomFilter(sum([run.filter.est_num_items for run in level]))
 
-        fds, keys, values, is_empty = [], [], [], []
+        # use counters and the nr_records in the file to know when the key-values part has been parsed
+        # the alternative would be to use tell() all the time which is slow
+        fds, keys, values, is_empty, counters, nr_records_in_run = [], [], [], [], [], []
         for i, _ in enumerate(level):
             fd = self.rfds[level_idx][i]
             fds.append(fd)
@@ -169,7 +183,10 @@ class LSMTree(KVStore):
             keys.append(k)
             values.append(v)
             is_empty.append(True if not k else False)
+            counters.append(0 if not k else 1)
+            nr_records_in_run.append(self.levels[level_idx][i].nr_records)
 
+        nr_records = 0
         with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run').open('wb') as run_file:
             while not all(is_empty):
                 argmin_key = len(level) - 1
@@ -187,23 +204,31 @@ class LSMTree(KVStore):
                 if values[argmin_key]:
                     fence_pointers.add(keys[argmin_key], run_file.tell())
                     self._write_kv_pair(run_file, keys[argmin_key], values[argmin_key])
-                    filter.add(keys[argmin_key])
+                    bloom_filter.add(keys[argmin_key])
+                    nr_records += 1
 
                 written_key = keys[argmin_key]
 
-                # read next kv pair 
-                keys[argmin_key], values[argmin_key] = self._read_kv_pair(fds[argmin_key])
-                if not keys[argmin_key]:
-                    is_empty[argmin_key] = True
+                # read next kv pair
+                if not is_empty[argmin_key]:
+                    if counters[argmin_key] >= nr_records_in_run[argmin_key]:
+                        is_empty[argmin_key] = True
+                    else:
+                        keys[argmin_key], values[argmin_key] = self._read_kv_pair(fds[argmin_key])
+                        counters[argmin_key] += 1
 
                 # skip duplicates
                 # + 1 cause inclusive range
                 for i in reversed(range(argmin_key + 1)):
                     # if it's the same key, read one more pair to skip it
                     while not is_empty[i] and written_key == keys[i]:
-                        keys[i], values[i] = self._read_kv_pair(fds[i])
-                        if not keys[i]:
+                        if counters[i] >= nr_records_in_run[i]:
                             is_empty[i] = True
+                        else:
+                            keys[i], values[i] = self._read_kv_pair(fds[i])
+                            counters[i] += 1
+
+            append_indices(run_file, fence_pointers, bloom_filter, nr_records)
 
         if level_idx + 1 >= len(self.rfds):
             self.rfds.append([])
@@ -212,23 +237,15 @@ class LSMTree(KVStore):
             fd.close()
         self.rfds[level_idx].clear()
 
-        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.pointers').open('w') as pointers_file:
-            pointers_file.write(fence_pointers.serialize())
-
-        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.filter').open('w') as filter_file:
-            filter_file.write(filter.serialize())
-
         # remove the files after successfully merging.
         for i, _ in enumerate(level):
             (self.data_dir / f'L{level_idx}.{i}.run').unlink()
-            (self.data_dir / f'L{level_idx}.{i}.pointers').unlink()
-            (self.data_dir / f'L{level_idx}.{i}.filter').unlink()
 
         # empty the runs array
         level.clear()
 
         # append new run
-        next_level.append(Run(filter, fence_pointers))
+        next_level.append(Run(bloom_filter, fence_pointers, nr_records))
 
         # sync with remote
         if self.replica:
@@ -247,7 +264,7 @@ class LSMTree(KVStore):
         if len(self.memtable) == 0:
             return
         fence_pointers = FencePointers(self.density_factor)
-        filter = BloomFilter(len(self.memtable))
+        bloom_filter = BloomFilter(len(self.memtable))
 
         if not self.levels:
             self.levels.append([])
@@ -255,23 +272,20 @@ class LSMTree(KVStore):
         flush_level = 0  # always flush at first level
         n_runs = len(self.levels[0])
 
+        nr_records = 0
         with (self.data_dir / f'L{flush_level}.{n_runs}.run').open('wb') as run_file:
             while self.memtable:
                 k, v = self.memtable.popitem(0)
                 fence_pointers.add(k, run_file.tell())
                 self._write_kv_pair(run_file, k, v)
-                filter.add(k)
+                bloom_filter.add(k)
+                nr_records += 1
+            append_indices(run_file, fence_pointers, bloom_filter, nr_records)
 
         self.memtable_bytes_count = 0
 
-        self.levels[flush_level].append(Run(filter, fence_pointers))
+        self.levels[flush_level].append(Run(bloom_filter, fence_pointers, nr_records))
         self.rfds[0].append((self.data_dir / f'L{flush_level}.{n_runs}.run').open('rb'))
-
-        with (self.data_dir / f'L{flush_level}.{n_runs}.pointers').open('w') as pointers_file:
-            pointers_file.write(fence_pointers.serialize())
-
-        with (self.data_dir / f'L{flush_level}.{n_runs}.filter').open('w') as filter_file:
-            filter_file.write(filter.serialize())
 
         if self.replica:
             self.filenames_to_push.append(f'L{flush_level}.{n_runs}.run')
