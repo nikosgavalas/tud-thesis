@@ -66,11 +66,26 @@ class LSMTree(KVStore):
         self.levels: list[list[Run]] = []
         self.rfds: list[list[FileIO]] = [[]]
 
+        # global version is used to attach a version number to every file flushed and merged.
+        # this is used in snapshotting in the delta maps
+        self.global_version = 0
+
         if self.replica:
             # restore calls rebuild_indices, so this way we avoid rebuilding twice
             self.restore()
         else:
             self.rebuild_indices()
+
+    def _discover_runs(self) -> list[tuple[int, int, int]]:
+        runs_discovered = []
+        for f in self.data_dir.glob('L*'):
+            if f.is_file() and f.name.endswith('.run'):
+                level, run, version, _ = f.name.split('.')
+                level = int(level[1:])
+                run = int(run)
+                version = int(version)
+                runs_discovered.append((level, run, version))
+        return runs_discovered
 
     def rebuild_indices(self):
         self.levels = []
@@ -79,31 +94,32 @@ class LSMTree(KVStore):
         self.filenames_to_push.clear()
 
         # do file discovery
-        data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if
-                             f.is_file() and f.name.endswith('.run')]
+        runs_discovered = self._discover_runs()
+        data_files_levels = [r[0] for r in runs_discovered]
         levels_lengths: list[int] = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
         for i in data_files_levels:
             levels_lengths[i] += 1
 
-        self.rfds = [[(self.data_dir / f'L{level_idx}.{run_idx}.run').open('rb') for run_idx in range(n_runs)] for
-                     level_idx, n_runs in enumerate(levels_lengths)]
+        self.rfds = [[None for _ in range(n_runs)] for n_runs in levels_lengths]
+        for level_idx, run_idx, version in runs_discovered:
+            self.rfds[level_idx][run_idx] = (self.data_dir / f'L{level_idx}.{run_idx}.{version}.run').open('rb')
 
         # load filters and pointers for levels and runs
         for _ in levels_lengths:
             self.levels.append([])
-        for level_idx, n_runs in enumerate(levels_lengths):
-            for r in range(n_runs):
-                with (self.data_dir / f'L{level_idx}.{r}.run').open('rb') as run_file:
-                    # fetch the last 24 bytes (=3*8)
-                    run_file.seek(-24, 2)
-                    offsets = run_file.read()
-                    pointers_offset, bloom_offset, nr_records = struct.unpack('<QQQ', offsets)
-                    run_file.seek(pointers_offset)
-                    pointers = FencePointers(from_str=run_file.read(bloom_offset - pointers_offset).decode())
-                    run_file.seek(bloom_offset)
-                    bloom_filter = BloomFilter(from_str=run_file.read())
+        for level_idx, run_idx, version in sorted(runs_discovered):
+            with (self.data_dir / f'L{level_idx}.{run_idx}.{version}.run').open('rb') as run_file:
+                # fetch the last 24 bytes (=3*8)
+                run_file.seek(-24, 2)
+                bloom_end_offset = run_file.tell()
+                offsets = run_file.read()
+                pointers_offset, bloom_offset, nr_records = struct.unpack('<QQQ', offsets)
+                run_file.seek(pointers_offset)
+                pointers = FencePointers(from_str=run_file.read(bloom_offset - pointers_offset).decode())
+                run_file.seek(bloom_offset)
+                bloom_filter = BloomFilter(from_str=run_file.read(bloom_end_offset - bloom_offset).decode())
 
-                self.levels[level_idx].append(Run(bloom_filter, pointers, nr_records))
+            self.levels[level_idx].append(Run(bloom_filter, pointers, nr_records))
 
     def close(self):
         self.save_metadata()
@@ -187,7 +203,7 @@ class LSMTree(KVStore):
             nr_records_in_run.append(self.levels[level_idx][i].nr_records)
 
         nr_records = 0
-        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run').open('wb') as run_file:
+        with (self.data_dir / f'L{level_idx + 1}.{len(next_level)}.{self.global_version}.run').open('wb') as run_file:
             while not all(is_empty):
                 argmin_key = len(level) - 1
                 # correctly initialize the argmin_key (cause empty key b'' would make it instantly the argmin_key in
@@ -232,14 +248,16 @@ class LSMTree(KVStore):
 
         if level_idx + 1 >= len(self.rfds):
             self.rfds.append([])
-        self.rfds[level_idx + 1].append((self.data_dir / f'L{level_idx + 1}.{len(next_level)}.run').open('rb'))
+        self.rfds[level_idx + 1].append((self.data_dir / f'L{level_idx + 1}.{len(next_level)}.{self.global_version}.run').open('rb'))
         for fd in fds:
             fd.close()
         self.rfds[level_idx].clear()
 
+        self.global_version += 1
+
         # remove the files after successfully merging.
-        for i, _ in enumerate(level):
-            (self.data_dir / f'L{level_idx}.{i}.run').unlink()
+        for file in self.data_dir.glob(f'L{level_idx}.*.*.run'):
+            file.unlink()
 
         # empty the runs array
         level.clear()
@@ -273,7 +291,7 @@ class LSMTree(KVStore):
         n_runs = len(self.levels[0])
 
         nr_records = 0
-        with (self.data_dir / f'L{flush_level}.{n_runs}.run').open('wb') as run_file:
+        with (self.data_dir / f'L{flush_level}.{n_runs}.{self.global_version}.run').open('wb') as run_file:
             while self.memtable:
                 k, v = self.memtable.popitem(0)
                 fence_pointers.add(k, run_file.tell())
@@ -285,7 +303,9 @@ class LSMTree(KVStore):
         self.memtable_bytes_count = 0
 
         self.levels[flush_level].append(Run(bloom_filter, fence_pointers, nr_records))
-        self.rfds[0].append((self.data_dir / f'L{flush_level}.{n_runs}.run').open('rb'))
+        self.rfds[0].append((self.data_dir / f'L{flush_level}.{n_runs}.{self.global_version}.run').open('rb'))
+
+        self.global_version += 1
 
         if self.replica:
             self.filenames_to_push.append(f'L{flush_level}.{n_runs}.run')
