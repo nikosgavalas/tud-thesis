@@ -70,6 +70,8 @@ class FuzzyTester:
                 engine.set(rand_key, rand_value)
 
             if test_recovery:
+                if test_remote:
+                    engine.snapshot()
                 engine.close()
                 if test_remote:
                     shutil.rmtree(engine.data_dir.name)
@@ -188,13 +190,13 @@ class FuzzyTester:
                 engine.set(rand_key, rand_value)
             # overwrite snapshot 1
             engine.snapshot()
-            snapshot_dict(dict, tmpdir, v)
+            snapshot_dict(dict, tmpdir, 1)
 
             # now load all 3 and check that they are ok
             for v in range(3):
                 # load version 0
-                engine.restore(0)
-                dict = load_dict_snapshot(tmpdir, 0)
+                engine.restore(v)
+                dict = load_dict_snapshot(tmpdir, v)
                 # check that it is ok
                 for k, v in dict.items():
                     self.assertEqual(v, engine.get(k))

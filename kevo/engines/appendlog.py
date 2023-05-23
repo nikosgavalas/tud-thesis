@@ -83,8 +83,6 @@ class AppendLog(KVStore):
 
     def close(self):
         self.close_run()
-        if self.remote:
-            self.snapshot()
         self.wfd.close()
         for rfds in self.rfds:
             for rfd in rfds:

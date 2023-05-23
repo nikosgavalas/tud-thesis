@@ -104,8 +104,6 @@ class LSMTree(KVStore):
             self.rfds[level_idx].append((self.data_dir / f'L{level_idx}.{run_idx}.{version}.run').open('rb'))
 
     def close(self):
-        if self.remote:
-            self.snapshot()
         self.wal_file.close()
         for rfds in self.rfds:
             for rfd in rfds:

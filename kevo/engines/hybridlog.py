@@ -119,8 +119,6 @@ class HybridLog(KVStore):
 
     def close(self):
         self.flush(self.tail_offset)  # flush everything
-        if self.remote:
-            self.snapshot()
         self.wfd.close()
         for rfds in self.rfds:
             for rfd in rfds:
@@ -173,8 +171,12 @@ class HybridLog(KVStore):
 
         if self.ro_offset - self.head_offset > self.flush_interval:
             self.flush(self.ro_offset)
+            self.open_new_files()
 
     def flush(self, offset: int):
+        if self.memory.is_empty():
+            return
+
         flush_level = 0
 
         if flush_level >= len(self.levels):
@@ -203,8 +205,8 @@ class HybridLog(KVStore):
             self.merge(flush_level)
 
         # open a new file after merging
-        self.wfd = (self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('ab')
-        self.rfds[flush_level].append((self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('rb'))
+        # self.wfd = (self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('ab')
+        # self.rfds[flush_level].append((self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('rb'))
 
     def merge(self, level: int):
         next_level = level + 1
@@ -250,6 +252,12 @@ class HybridLog(KVStore):
         if self.levels[next_level] >= self.max_runs_per_level:
             self.merge(next_level)
 
+    def open_new_files(self):
+        flush_level = 0
+        self.wfd.close()
+        self.wfd = (self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('ab')
+        self.rfds[flush_level].append((self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('rb'))
+
     def compaction(self, run):
         # TODO move to appendlog where it's meaningful.
         log_path = (self.data_dir / f'L0.{run}.run')
@@ -285,6 +293,7 @@ class HybridLog(KVStore):
             runs = discover_run_files(self.data_dir)
             self.remote.push_deltas(runs, self.snapshot_version)
             self.snapshot_version += 1
+        self.open_new_files()
 
     def restore(self, version=None):
         if self.remote:

@@ -47,6 +47,7 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
         db.snapshot()
         db.set(b'a', b'3')
         db.set(b'b', b'4')
+        db.snapshot()
         db.close()
 
         shutil.rmtree(self.dir.name)
