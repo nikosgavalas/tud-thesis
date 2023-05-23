@@ -1,53 +1,11 @@
-"""
-Key-value store based on Microsoft's FASTER (https://microsoft.github.io/FASTER/docs/td-research-papers/).
-The good thing about this one is that the memory part in front of the file works like a cache, so for some distributions
-of data (like zipfian) it may work really well. However, it sucks for range queries (not that I support those in the LSM
-implementation right now but I will if I have to, it's trivial) and the compaction cannot be done efficiently
-(needs O(n) memory because of the need to use a hashset while log-structuring compaction is O(1)).  Also, wtf am I
-supposed to do for fault-tolerance of the hash-index? In the paper they snapshot it but I am not sure how this is
-completely watertight. And then a WAL would be stupid I think, I mean, we use the in-memory buffer to avoid I/O, and
-we're going to use I/O anyway? Eh. I don't like this one also because the logical index compels for limited length
-of the keys and values. If I only had an append log, I could store in my index the file offsets directly and with a
-proper binary encoding I could have variable lengths for keys and values. I would also use a WAL for the hash index
-and boom done. Another limitation of this type of log is that keys must all fit to memory at all times (due to the
-index being entirely in-memory).
-
-Logical addresses:
-----------------------------------------------
-|        |            |            :
-|  disk  |   ro mem   |   rw mem   :
-|        |            |            :
-----------------------------------------------
-^        ^            ^            ^
-0        head offset  ro offset    tail offset
-
-Another concern of mine: I am not sure why the read-only part (with copy-on-update) is useful. Maybe it has to do with
-concurrency, with the epoch system in the paper, but I don't have multiple threads here... TODO re-read about that.
-Wait a sec... even the copy-on-update... why? just insert the new value directly, why copy? this is only useful when
-you want to do a blind update, like "increment by 1" so you need to do a read first. but even then, you don't have to
-give it a specific name like copy-on-update, it's just the way you'd do it naturally...
-TODO: compaction of the log on disk
-Note: for the compaction you don't actually need extra memory, you can just use the index that you already have in-mem.
-I just realized compaction (and also merging) is not possible here trivially. One needs to keep track of an array
-of the previous file sizes/maxoffset to be able to maintain a continuous logical address space, which adds too much
-overhead in the address translations, plus requires extra bookkeeping (persistence). I am not doing it.
-
-Something I haven't done (iirc in the appendlog implementation as well) is clear the entry from the hash index when it is
-removed from the db. well, TODO.
-
-Something radical I just did: I completely removed the file offset to LA linear translation, which required me to
-have very small keyval lengths (cause i needed padding and large keyvals would make the disk explode), and just used
-extra memory for the translation by using a dict...
-"""
-
 from io import FileIO
 from sys import getsizeof
 from typing import Optional
 
 # from kevo.common.hashindex import HashIndex
 from kevo.common.ringbuffer import RingBuffer
-from kevo.engines.kvstore import KVStore, Record
-from kevo.replication import Replica
+from kevo.engines.kvstore import KVStore, Record, discover_run_files
+from kevo.remote import Remote
 
 
 class HybridLog(KVStore):
@@ -65,11 +23,9 @@ class HybridLog(KVStore):
                  flush_interval=(4 * 2 ** 10),
                  hash_index='dict',
                  compaction_enabled=False,
-                 auto_push=True,
-                 replica: Optional[Replica] = None):
+                 remote: Optional[Remote] = None):
         self.type = 'hybridlog'
-        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len,
-                         auto_push=auto_push, replica=replica)
+        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, remote=remote)
 
         assert max_runs_per_level > 1
         assert flush_interval > 0
@@ -97,60 +53,73 @@ class HybridLog(KVStore):
 
         self.levels: list[int] = []
         # read file-descriptors
-        self.rfds: list[list[FileIO]] = [[]]
+        self.rfds: list[list[FileIO]] = []
         # write file-descriptor
         self.wfd: Optional[FileIO] = None
 
+        self.global_version = 0
+
+        self.snapshot_version = 0
+
         self.memory: Optional[RingBuffer] = None
 
-        if self.replica:
+        if self.remote:
             self.restore()
         else:
             self.rebuild_indices()
 
     def rebuild_indices(self):
-        self.hash_index = {}
+        self.levels.clear()
+        self.rfds.clear()
 
-        self.filenames_to_push.clear()
+        self.hash_index.clear()
+        self.la_to_file_offset.clear()
 
-        self.la_to_file_offset = {}
-
-        self.head_offset = 0  # LA > head_offset is in mem
-        self.ro_offset = 0  # in LA > ro_offset we have the mutable region
-        self.tail_offset = 0  # points to the tail of the log, the next free available slot in memory
-
-        # do file discovery
-        data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if f.is_file()]
-        self.levels = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
-        for i in data_files_levels:
-            self.levels[i] += 1
-
-        self.rfds = [[(self.data_dir / f'L{level_idx}.{run_idx}.run').open('rb') for run_idx in range(n_runs)] for
-                     level_idx, n_runs in enumerate(self.levels)]
-        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('wb')
-        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
-
-        # rebuild the index
-        for level_idx, n_runs in reversed(list(enumerate(self.levels))):
-            for run_idx in range(n_runs):
-                log_file = self.rfds[level_idx][run_idx]
-                offset = log_file.tell()
-                k, _ = self._read_kv_pair(log_file)
-                while k:
-                    self.head_offset += 1
-                    self.hash_index[k] = self.head_offset
-                    self.la_to_file_offset[self.head_offset] = Record(level_idx, run_idx, offset)
-                    offset = log_file.tell()
-                    k, _ = self._read_kv_pair(log_file)
-        self.ro_offset = self.head_offset
-        self.tail_offset = self.ro_offset
+        self.head_offset = 0
+        self.ro_offset = 0
+        self.tail_offset = 0
 
         self.memory = RingBuffer(self.mem_segment_len)
 
+        # do file discovery
+        runs_discovered = self.discover_runs()
+        if not runs_discovered:
+            self.wfd = (self.data_dir / f'L{0}.{0}.{self.global_version}.run').open('wb')
+            self.rfds.append([(self.data_dir / f'L{0}.{0}.{self.global_version}.run').open('rb')])
+            return
+
+        # rebuild the index
+        for level_idx, run_idx, version in sorted(runs_discovered):
+            while level_idx >= len(self.levels):
+                self.levels.append(0)
+            self.levels[level_idx] += 1
+
+            while level_idx >= len(self.rfds):
+                self.rfds.append([])
+            self.rfds[level_idx].append((self.data_dir / f'L{level_idx}.{run_idx}.{version}.run').open('rb'))
+
+        # sort by first field asc and by second field desc
+        for level_idx, run_idx, version in sorted(runs_discovered, key=lambda x: (-x[0], x[1])):
+            log_file = self.rfds[level_idx][run_idx]
+            offset = log_file.tell()
+            k, _ = self._read_kv_pair(log_file)
+            while k:
+                self.head_offset += 1
+                self.hash_index[k] = self.head_offset
+                self.la_to_file_offset[self.head_offset] = Record(level_idx, run_idx, offset)
+                offset = log_file.tell()
+                k, _ = self._read_kv_pair(log_file)
+
+        # TODO set the global version to the max of the discovered ones
+        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.{self.global_version}.run').open('wb')
+        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.{self.global_version}.run').open('rb'))
+
+        self.ro_offset = self.head_offset
+        self.tail_offset = self.ro_offset
+
     def close(self):
         self.flush(self.tail_offset)  # flush everything
-        self.save_metadata()
-        if self.replica:
+        if self.remote:
             self.snapshot()
         self.wfd.close()
         for rfds in self.rfds:
@@ -206,43 +175,45 @@ class HybridLog(KVStore):
             self.flush(self.ro_offset)
 
     def flush(self, offset: int):
+        flush_level = 0
+
+        if flush_level >= len(self.levels):
+            self.levels.append(0)
+        if flush_level >= len(self.rfds):
+            self.rfds.append([])
+
         while self.head_offset < offset:
             key, value = self.memory.pop()
             write_offset = self.wfd.tell()
             self.head_offset += 1
-            # if is not the most recent record, drop it, like we do with the file compaction
+            # if is not the most recent record, drop it, no need to keep it.
             if self.hash_index[key] == self.head_offset:
                 self._write_kv_pair(self.wfd, key, value)
-                self.la_to_file_offset[self.head_offset] = Record(0, self.levels[0], write_offset)
+                self.la_to_file_offset[self.head_offset] = Record(flush_level, self.levels[flush_level], write_offset)
 
         self.wfd.close()
 
         if self.compaction_enabled:
             # TODO remove compaction entirely. It is done in-mem when flushing,
             # there's no need for it at all.
-            self.compaction(self.levels[0])
+            self.compaction(self.levels[flush_level])
 
-        if self.replica:
-            self.filenames_to_push.append(self.wfd.name)
-            if self.auto_push:
-                self.push_files()
-
-        self.levels[0] += 1
-        if self.levels[0] >= self.max_runs_per_level:
-            self.merge(0)
+        self.levels[flush_level] += 1
+        if self.levels[flush_level] >= self.max_runs_per_level:
+            self.merge(flush_level)
 
         # open a new file after merging
-        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
-        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
+        self.wfd = (self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('ab')
+        self.rfds[flush_level].append((self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('rb'))
 
     def merge(self, level: int):
         next_level = level + 1
-        if level + 1 >= len(self.levels):
+        if next_level >= len(self.levels):
             self.levels.append(0)
             self.rfds.append([])
-        next_run = self.levels[level + 1]
+        next_run = self.levels[next_level]
 
-        dst_file = (self.data_dir / f'L{next_level}.{next_run}.run').open('ab')
+        dst_file = (self.data_dir / f'L{next_level}.{next_run}.{self.global_version}.run').open('ab')
         for run_idx in range(self.levels[level]):
             src_file = self.rfds[level][run_idx]
             src_offset = src_file.tell()
@@ -258,28 +229,29 @@ class HybridLog(KVStore):
                 k, v = self._read_kv_pair(src_file)
         dst_file.close()
 
-        if self.replica:
-            self.filenames_to_push.append(dst_file.name)
-            if self.auto_push:
-                self.push_files()
-
-        self.rfds[next_level].append((self.data_dir / f'L{next_level}.{next_run}.run').open('rb'))
+        self.rfds[next_level].append((self.data_dir / f'L{next_level}.{next_run}.{self.global_version}.run').open('rb'))
 
         # delete merged files
         for rfd in self.rfds[level]:
             rfd.close()
         self.rfds[level].clear()
-        for run_idx in range(self.levels[level]):
-            path_to_remove = (self.data_dir / f'L{level}.{run_idx}.run')
-            path_to_remove.unlink()
+        # remove the files after successfully merging.
+        for file in self.data_dir.glob(f'L{level}.*.*.run'):
+            file.unlink()
+
         # update the runs counter
         self.levels[level] = 0
         self.levels[next_level] += 1
+
+        # bump the global version
+        self.global_version += 1
+
         # merge recursively
         if self.levels[next_level] >= self.max_runs_per_level:
             self.merge(next_level)
 
     def compaction(self, run):
+        # TODO move to appendlog where it's meaningful.
         log_path = (self.data_dir / f'L0.{run}.run')
         compacted_log_path = log_path.with_suffix('.tmp')
         # NOTE i can copy the index here and keep the old one for as long as the compaction is running to enable reads
@@ -309,12 +281,14 @@ class HybridLog(KVStore):
     def snapshot(self):
         self.flush(self.tail_offset)
         self.ro_offset = self.tail_offset
-        if not self.auto_push:
-            self.push_files()
+        if self.remote:
+            runs = discover_run_files(self.data_dir)
+            self.remote.push_deltas(runs, self.snapshot_version)
+            self.snapshot_version += 1
 
     def restore(self, version=None):
-        if self.replica:
-            self.replica.restore(max_per_level=self.max_runs_per_level, version=version)
+        if self.remote:
+            self.remote.restore(version=version)
             # close open file descriptors before rebuilding
             if self.wfd is not None:
                 self.wfd.close()

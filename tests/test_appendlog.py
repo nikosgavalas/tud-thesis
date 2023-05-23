@@ -2,7 +2,7 @@ import shutil
 import unittest
 from pathlib import Path
 
-from kevo import AppendLog, PathReplica, MinioReplica
+from kevo import AppendLog, PathRemote, MinioRemote
 from fuzzytester import FuzzyTester
 
 
@@ -10,13 +10,13 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
     dir = Path('./data_test')
 
     def setUp(self):
-        self.replica = PathReplica(self.dir.name, '/tmp/remote')
-        # self.replica = MinioReplica(self.dir.name, 'testbucket')
+        self.remote = PathRemote('/tmp/remote')
+        # self.remote = MinioReplica('testbucket')
         self.dir.mkdir()
 
     def tearDown(self):
         shutil.rmtree(self.dir.name)
-        self.replica.destroy()
+        self.remote.destroy()
 
     def test_basic(self):
         l = AppendLog(self.dir.name)
@@ -40,8 +40,8 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
 
         l.close()
 
-    def test_replica(self):
-        db = AppendLog(self.dir.name, replica=self.replica)
+    def test_remote(self):
+        db = AppendLog(self.dir.name, remote=self.remote)
         db.set(b'a', b'1')
         db.set(b'b', b'2')
         db.snapshot()
@@ -51,34 +51,38 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
 
         shutil.rmtree(self.dir.name)
 
-        db = AppendLog(self.dir.name, replica=self.replica)
+        db = AppendLog(self.dir.name, remote=self.remote)
         self.assertEqual(db.get(b'a'), b'3')
         self.assertEqual(db.get(b'b'), b'4')
-        db.restore(version=1)
+        db.restore(version=0)
         self.assertEqual(db.get(b'a'), b'1')
         self.assertEqual(db.get(b'b'), b'2')
         db.close()
 
-    def test_fuzzy_realistic(self):
-        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'replica': None}, key_len_range=(1, 10),
-                        val_len_range=(0, 10), n_items=1000, n_iter=1_000_000, seeds=[1], test_recovery=True,
-                        test_replica=False)
+    def test_fuzzy_generic(self):
+        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'remote': None}, key_len_range=(1, 10),
+                        val_len_range=(0, 10), n_items=1000, n_iter=1_000_000, seeds=[1], test_recovery=False,
+                        test_remote=False)
 
     def test_fuzzy_granular(self):
-        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'threshold': 100, 'replica': None},
+        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'threshold': 100, 'remote': None},
                         key_len_range=(1, 10), val_len_range=(0, 10), n_items=100, n_iter=10_000, seeds=[1],
-                        test_recovery=True, test_replica=False)
+                        test_recovery=True, test_remote=False)
 
-    def test_fuzzy_replica(self):
-        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'threshold': 1_000, 'replica': self.replica},
+    def test_fuzzy_recovery(self):
+        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'threshold': 1_000, 'remote': self.remote},
                         key_len_range=(1, 10), val_len_range=(0, 10), n_items=100, n_iter=10_000, seeds=[1],
-                        test_recovery=True, test_replica=True)
+                        test_recovery=True, test_remote=True)
 
     def test_fuzzy_large_kvs(self):
         self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'max_key_len': 100_000, 'max_value_len': 100_000,
-                                         'threshold': 1_000, 'replica': None},
+                                         'threshold': 1_000, 'remote': None},
                         key_len_range=(1, 100_000), val_len_range=(0, 100_000), n_items=10, n_iter=1000, seeds=[1],
-                        test_recovery=True, test_replica=False)
+                        test_recovery=True, test_remote=False)
+
+    def test_fuzzy_snapshot(self):
+        self.fuzzy_test_snapshot(AppendLog, args={'data_dir': self.dir.name, 'threshold': 100, 'remote': self.remote},
+                                 key_len_range=(1, 10), val_len_range=(0, 13), n_items=10_000, n_iter=10_000, seed=1)
 
     def test_rebuild(self):
         l1 = AppendLog(self.dir.name, threshold=10)

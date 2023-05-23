@@ -2,8 +2,8 @@ from sys import getsizeof
 from typing import Optional
 from io import FileIO
 
-from kevo.engines.kvstore import KVStore, Record
-from kevo.replication import Replica
+from kevo.engines.kvstore import KVStore, Record, discover_run_files
+from kevo.remote import Remote
 
 
 class AppendLog(KVStore):
@@ -15,32 +15,9 @@ class AppendLog(KVStore):
                  max_value_len=255,
                  max_runs_per_level=3,
                  threshold=4_000_000,
-                 auto_push=True,
-                 replica: Optional[Replica] = None):
+                 remote: Optional[Remote] = None):
         self.type = 'appendlog'
-        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len,
-                         auto_push=auto_push, replica=replica)
-
-        # about state:
-        # the state here, runs_per_level, contrary to the LSMTree implementation, keeps track
-        # of all the files not just those that have been compacted/merged.
-        # this means that i have to update it **BEFORE** any new files are written. this is because the index
-        # always points to the most recent record, which may be to a new log.
-        # this means that i have to check for unexistent files
-        # in the LSMTree implementation, i have idempotency (i can rebuild stuff based on previous files)
-        # one more thing about the state i just realized: only runs in the first level need compaction.
-        # the merged files in greater levels are already compacted in a sense
-
-        # I enabled flushing always. it's slower but it's safer and this class requires too (while for the other is
-        # optional).
-        # also, I can detect if a record is malformed by checking if the len(key) and len(value) are equal
-        # to their encoding byte when reading
-
-        # actually I completely removed compaction. It adds a lot of complexity for no benefit, since
-        # all the potential benefit is actually reaped anyway in the merging phase.
-
-        # NOTE: handled deletes nicely, optimized by keeping the files open for reading, since 50% of the time was being
-        # wasted in fopens as profiling showed.
+        super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, remote=remote)
 
         assert max_runs_per_level > 1
         assert threshold > 0
@@ -52,43 +29,61 @@ class AppendLog(KVStore):
         self.hash_index: dict[bytes, Record] = {}
         self.levels: list[int] = []
         # read file-descriptors
-        self.rfds: list[list[FileIO]] = [[]]
+        self.rfds: list[list[FileIO]] = []
         # write file-descriptor
         self.wfd: Optional[FileIO] = None
 
-        if self.replica:
+        # TODO load last global version in recovery
+        self.global_version = 0
+
+        self.snapshot_version = 0
+
+        if self.remote:
             self.restore()
         else:
             self.rebuild_indices()
 
     def rebuild_indices(self):
-        self.filenames_to_push.clear()
+        self.levels.clear()
+        self.rfds.clear()
+
+        self.hash_index.clear()
 
         # do file discovery
-        data_files_levels = [int(f.name.split('.')[0][1:]) for f in self.data_dir.glob('L*') if f.is_file()]
-        self.levels = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
-        for i in data_files_levels:
-            self.levels[i] += 1
-
-        self.rfds = [[(self.data_dir / f'L{level_idx}.{run_idx}.run').open('rb') for run_idx in range(n_runs)] for
-                     level_idx, n_runs in enumerate(self.levels)]
-        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('wb')
-        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
+        runs_discovered = self.discover_runs()
+        if not runs_discovered:
+            self.wfd = (self.data_dir / f'L{0}.{0}.{self.global_version}.run').open('wb')
+            self.rfds.append([(self.data_dir / f'L{0}.{0}.{self.global_version}.run').open('rb')])
+            self.levels.append(0)
+            return
 
         # rebuild the index
-        for level_idx, n_runs in reversed(list(enumerate(self.levels))):
-            for run_idx in range(n_runs):
-                log_file = self.rfds[level_idx][run_idx]
+        for level_idx, run_idx, version in sorted(runs_discovered):
+            while level_idx >= len(self.levels):
+                self.levels.append(0)
+            self.levels[level_idx] += 1
+
+            while level_idx >= len(self.rfds):
+                self.rfds.append([])
+            self.rfds[level_idx].append((self.data_dir / f'L{level_idx}.{run_idx}.{version}.run').open('rb'))
+
+        # sort by first field asc and by second field desc
+        for level_idx, run_idx, version in sorted(runs_discovered, key=lambda x: (-x[0], x[1])):
+            log_file = self.rfds[level_idx][run_idx]
+            offset = log_file.tell()
+            k, _ = self._read_kv_pair(log_file)
+            while k:
+                self.hash_index[k] = Record(level_idx, run_idx, offset)
                 offset = log_file.tell()
                 k, _ = self._read_kv_pair(log_file)
-                while k:
-                    self.hash_index[k] = Record(level_idx, run_idx, offset)
-                    offset = log_file.tell()
-                    k, _ = self._read_kv_pair(log_file)
+
+        # TODO set the global version to the max of the discovered ones
+        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.{self.global_version}.run').open('wb')
+        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.{self.global_version}.run').open('rb'))
 
     def close(self):
-        self.save_metadata()
-        if self.replica:
+        self.close_run()
+        if self.remote:
             self.snapshot()
         self.wfd.close()
         for rfds in self.rfds:
@@ -132,35 +127,39 @@ class AppendLog(KVStore):
 
         if self.counter >= self.threshold:
             self.close_run()
+            self.open_new_files()
 
     def close_run(self):
         if self.counter == 0:
             return
 
+        flush_level = 0
+        if flush_level >= len(self.levels):
+            self.levels.append(0)
+        if flush_level >= len(self.rfds):
+            self.rfds.append([])
+
         self.counter = 0
         self.wfd.close()
 
-        if self.replica:
-            self.filenames_to_push.append(self.wfd.name)
-            if self.auto_push:
-                self.push_files()
+        self.levels[flush_level] += 1
+        if self.levels[flush_level] >= self.max_runs_per_level:
+            self.merge(flush_level)
 
-        self.levels[0] += 1
-        if self.levels[0] >= self.max_runs_per_level:
-            self.merge(0)
-
-        # open a new file after merging
-        self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.run').open('ab')
-        self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.run').open('rb'))
+    def open_new_files(self):
+        flush_level = 0
+        self.wfd.close()
+        self.wfd = (self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('ab')
+        self.rfds[flush_level].append((self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('rb'))
 
     def merge(self, level: int):
         next_level = level + 1
-        if level + 1 >= len(self.levels):
+        if next_level >= len(self.levels):
             self.levels.append(0)
             self.rfds.append([])
-        next_run = self.levels[level + 1]
+        next_run = self.levels[next_level]
 
-        dst_file = (self.data_dir / f'L{next_level}.{next_run}.run').open('ab')
+        dst_file = (self.data_dir / f'L{next_level}.{next_run}.{self.global_version}.run').open('ab')
         for run_idx in range(self.levels[level]):
             src_file = self.rfds[level][run_idx]
             src_offset = src_file.tell()
@@ -174,36 +173,40 @@ class AppendLog(KVStore):
                 k, v = self._read_kv_pair(src_file)
         dst_file.close()
 
-        if self.replica:
-            self.filenames_to_push.append(dst_file.name)
-            if self.auto_push:
-                self.push_files()
-
-        self.rfds[next_level].append((self.data_dir / f'L{next_level}.{next_run}.run').open('rb'))
+        self.rfds[next_level].append((self.data_dir / f'L{next_level}.{next_run}.{self.global_version}.run').open('rb'))
 
         # delete merged files
         for rfd in self.rfds[level]:
             rfd.close()
         self.rfds[level].clear()
-        for run_idx in range(self.levels[level]):
-            path_to_remove = (self.data_dir / f'L{level}.{run_idx}.run')
-            path_to_remove.unlink()
+
+        # remove the files after successfully merging.
+        for file in self.data_dir.glob(f'L{level}.*.*.run'):
+            file.unlink()
+
         # update the runs counter
         self.levels[level] = 0
         self.levels[next_level] += 1
+
+        # bump the global version
+        self.global_version += 1
+
         # merge recursively
         if self.levels[next_level] >= self.max_runs_per_level:
             self.merge(next_level)
 
     def snapshot(self):
         self.close_run()
-        if not self.auto_push:
-            self.push_files()
+        if self.remote:
+            runs = discover_run_files(self.data_dir)
+            self.remote.push_deltas(runs, self.snapshot_version)
+            self.snapshot_version += 1
+        self.open_new_files()
 
     def restore(self, version=None):
         self.close_run()
-        if self.replica:
-            self.replica.restore(max_per_level=self.max_runs_per_level, version=version)
+        if self.remote:
+            self.remote.restore(version=version)
             if self.wfd is not None:
                 self.wfd.close()
             for rfds in self.rfds:

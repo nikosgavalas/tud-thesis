@@ -2,7 +2,7 @@ import shutil
 import unittest
 from pathlib import Path
 
-from kevo import MemOnly, PathReplica
+from kevo import MemOnly, PathRemote
 from fuzzytester import FuzzyTester
 
 
@@ -10,13 +10,12 @@ class TestMemOnly(unittest.TestCase, FuzzyTester):
     dir = Path('./data_test')
 
     def setUp(self):
-        self.replica = PathReplica(self.dir.name, '/tmp/remote')
-        # self.replica = MinioReplica(self.dir.name, 'testbucket')
+        self.remote = PathRemote('/tmp/remote')
         self.dir.mkdir()
 
     def tearDown(self):
         shutil.rmtree(self.dir.name)
-        self.replica.destroy()
+        self.remote.destroy()
 
     def test_basic(self):
         db = MemOnly(self.dir)
@@ -33,12 +32,12 @@ class TestMemOnly(unittest.TestCase, FuzzyTester):
         db.close()
 
     def test_fuzzy_basic(self):
-        self.fuzzy_test(MemOnly, args={'data_dir': self.dir.name, 'replica': self.replica}, key_len_range=(1, 10),
+        self.fuzzy_test(MemOnly, args={'data_dir': self.dir.name, 'remote': self.remote}, key_len_range=(1, 10),
                         val_len_range=(0, 10), n_items=1_000, n_iter=10_000, seeds=[1], test_recovery=True,
-                        test_replica=True)
+                        test_remote=True)
 
     def test_versioning(self):
-        db = MemOnly(self.dir, replica=self.replica)
+        db = MemOnly(self.dir, remote=self.remote)
 
         db.set(b'1', b'1')
         db.set(b'2', b'2')
@@ -48,7 +47,7 @@ class TestMemOnly(unittest.TestCase, FuzzyTester):
 
         shutil.rmtree(self.dir)
 
-        db = MemOnly(self.dir, replica=self.replica)
+        db = MemOnly(self.dir, remote=self.remote)
 
         self.assertEqual(db.get(b'1'), b'3')
         self.assertEqual(db.get(b'2'), b'2')

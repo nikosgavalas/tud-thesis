@@ -1,8 +1,3 @@
-"""
-Base class for IndexedLog and LSMTree classes.
-"""
-
-import json
 from pathlib import Path
 from collections import namedtuple
 
@@ -17,6 +12,14 @@ def bytes_needed_to_encode_len(length):
     return i
 
 
+def discover_run_files(dir_path: Path) -> list[Path]:
+    return [f for f in dir_path.glob('L*.run') if f.is_file()]
+
+
+def discover_version_files(dir_path: Path) -> list[Path]:
+    return [f for f in dir_path.glob('version.*.txt') if f.is_file()]
+
+
 class KVStore:
     EMPTY = b''
 
@@ -24,8 +27,7 @@ class KVStore:
                  data_dir='./data',
                  max_key_len=255,
                  max_value_len=255,
-                 auto_push=True,
-                 replica=None):
+                 remote=None):
 
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(exist_ok=True)
@@ -36,27 +38,20 @@ class KVStore:
         self.key_enc_len = bytes_needed_to_encode_len(self.max_key_len)
         self.val_enc_len = bytes_needed_to_encode_len(self.max_value_len)
 
-        self.replica = replica
+        self.remote = remote
+        if self.remote:
+            self.remote.init(self.data_dir)
 
-        self.auto_push = auto_push
-        self.filenames_to_push = []
-
-        self.metadata = {}
-        self.metadata_path = self.data_dir / 'metadata'
-        self.load_metadata()
-        if 'type' in self.metadata:
-            assert self.metadata['type'] == self.type, 'incorrect directory structure'
-        else:
-            self.metadata['type'] = self.type
-
-    def load_metadata(self):
-        if self.metadata_path.is_file():
-            with self.metadata_path.open('r') as metadata_file:
-                self.metadata = json.loads(metadata_file.read())
-
-    def save_metadata(self):
-        with self.metadata_path.open('w') as metadata_file:
-            metadata_file.write(json.dumps(self.metadata))
+    def discover_runs(self) -> list[tuple[int, int, int]]:
+        runs_discovered = []
+        for f in discover_run_files(self.data_dir):
+            level, run, version, _ = f.name.split('.')
+            level = int(level[1:])
+            run = int(run)
+            version = int(version)
+            runs_discovered.append((level, run, version))
+        # has to be sorted for rebuilding to be done in the right order
+        return sorted(runs_discovered)
 
     def _read_kv_pair(self, fd):
         first_bytes = fd.read(self.key_enc_len)
@@ -75,18 +70,6 @@ class KVStore:
         fd.write(value)
         if flush:
             fd.flush()
-
-    def push_files(self):
-        if self.replica:
-            if self.auto_push:
-                self.filenames_to_push.reverse()
-                while self.filenames_to_push:
-                    self.replica.put(self.filenames_to_push.pop())
-            else:
-                uniq = set(self.filenames_to_push)
-                while uniq:
-                    self.replica.put(uniq.pop())
-                self.filenames_to_push.clear()
 
     # abstract methods
     def __getitem__(self, key):

@@ -1,7 +1,3 @@
-"""
-LSM Tree with size-tiered compaction (write-optimized)
-"""
-
 from collections import namedtuple
 from sys import getsizeof
 from typing import Optional
@@ -11,8 +7,8 @@ import struct
 from sortedcontainers import SortedDict
 
 from kevo.common import BloomFilter, FencePointers
-from kevo.engines.kvstore import KVStore
-from kevo.replication import Replica
+from kevo.engines.kvstore import KVStore, discover_run_files
+from kevo.remote import Remote
 
 Run = namedtuple('Run', ['filter', 'pointers', 'nr_records'])
 
@@ -36,11 +32,9 @@ class LSMTree(KVStore):
                  max_runs_per_level=3,
                  density_factor=20,
                  memtable_bytes_limit=1_000_000,
-                 auto_push=True,
-                 replica: Optional[Replica] = None):
+                 remote: Optional[Remote] = None):
         self.type = 'lsmtree'
-        super().__init__(data_dir=data_dir, max_key_len=max_key_len, max_value_len=max_value_len,
-                         auto_push=auto_push, replica=replica)
+        super().__init__(data_dir=data_dir, max_key_len=max_key_len, max_value_len=max_value_len, remote=remote)
 
         assert max_runs_per_level > 1
         assert density_factor > 0
@@ -64,49 +58,31 @@ class LSMTree(KVStore):
         self.wal_file = self.wal_path.open('ab')
 
         self.levels: list[list[Run]] = []
-        self.rfds: list[list[FileIO]] = [[]]
+        self.rfds: list[list[FileIO]] = []
 
         # global version is used to attach a version number to every file flushed and merged.
         # this is used in snapshotting in the delta maps
         self.global_version = 0
 
-        if self.replica:
+        self.snapshot_version = 0
+
+        if self.remote:
             # restore calls rebuild_indices, so this way we avoid rebuilding twice
             self.restore()
         else:
             self.rebuild_indices()
 
-    def _discover_runs(self) -> list[tuple[int, int, int]]:
-        runs_discovered = []
-        for f in self.data_dir.glob('L*'):
-            if f.is_file() and f.name.endswith('.run'):
-                level, run, version, _ = f.name.split('.')
-                level = int(level[1:])
-                run = int(run)
-                version = int(version)
-                runs_discovered.append((level, run, version))
-        return runs_discovered
-
     def rebuild_indices(self):
-        self.levels = []
-        self.rfds: list[list[FileIO]] = [[]]
-
-        self.filenames_to_push.clear()
+        # TODO set the global version to the max of the discovered ones
+        self.levels.clear()
+        self.rfds.clear()
 
         # do file discovery
-        runs_discovered = self._discover_runs()
-        data_files_levels = [r[0] for r in runs_discovered]
-        levels_lengths: list[int] = [0] * (max(data_files_levels) + 1) if data_files_levels else [0]
-        for i in data_files_levels:
-            levels_lengths[i] += 1
-
-        self.rfds = [[None for _ in range(n_runs)] for n_runs in levels_lengths]
-        for level_idx, run_idx, version in runs_discovered:
-            self.rfds[level_idx][run_idx] = (self.data_dir / f'L{level_idx}.{run_idx}.{version}.run').open('rb')
+        runs_discovered = self.discover_runs()
+        if not runs_discovered:
+            return
 
         # load filters and pointers for levels and runs
-        for _ in levels_lengths:
-            self.levels.append([])
         for level_idx, run_idx, version in sorted(runs_discovered):
             with (self.data_dir / f'L{level_idx}.{run_idx}.{version}.run').open('rb') as run_file:
                 # fetch the last 24 bytes (=3*8)
@@ -119,11 +95,16 @@ class LSMTree(KVStore):
                 run_file.seek(bloom_offset)
                 bloom_filter = BloomFilter(from_str=run_file.read(bloom_end_offset - bloom_offset).decode())
 
+            while level_idx >= len(self.levels):
+                self.levels.append([])
             self.levels[level_idx].append(Run(bloom_filter, pointers, nr_records))
 
+            while level_idx >= len(self.rfds):
+                self.rfds.append([])
+            self.rfds[level_idx].append((self.data_dir / f'L{level_idx}.{run_idx}.{version}.run').open('rb'))
+
     def close(self):
-        self.save_metadata()
-        if self.replica:
+        if self.remote:
             self.snapshot()
         self.wal_file.close()
         for rfds in self.rfds:
@@ -265,15 +246,6 @@ class LSMTree(KVStore):
         # append new run
         next_level.append(Run(bloom_filter, fence_pointers, nr_records))
 
-        # sync with remote
-        if self.replica:
-            # -1 cause next_level was appended to previously
-            self.filenames_to_push.append(f'L{level_idx + 1}.{len(next_level) - 1}.run')
-            self.filenames_to_push.append(f'L{level_idx + 1}.{len(next_level) - 1}.pointers')
-            self.filenames_to_push.append(f'L{level_idx + 1}.{len(next_level) - 1}.filter')
-            if self.auto_push:
-                self.push_files()
-
         # cascade the merging recursively
         if len(next_level) >= self.max_runs_per_level:
             self.merge(level_idx + 1)
@@ -284,10 +256,13 @@ class LSMTree(KVStore):
         fence_pointers = FencePointers(self.density_factor)
         bloom_filter = BloomFilter(len(self.memtable))
 
-        if not self.levels:
-            self.levels.append([])
-
         flush_level = 0  # always flush at first level
+
+        if flush_level >= len(self.levels):
+            self.levels.append([])
+        if flush_level >= len(self.rfds):
+            self.rfds.append([])
+
         n_runs = len(self.levels[0])
 
         nr_records = 0
@@ -303,37 +278,28 @@ class LSMTree(KVStore):
         self.memtable_bytes_count = 0
 
         self.levels[flush_level].append(Run(bloom_filter, fence_pointers, nr_records))
-        self.rfds[0].append((self.data_dir / f'L{flush_level}.{n_runs}.{self.global_version}.run').open('rb'))
-
-        self.global_version += 1
-
-        if self.replica:
-            self.filenames_to_push.append(f'L{flush_level}.{n_runs}.run')
-            self.filenames_to_push.append(f'L{flush_level}.{n_runs}.pointers')
-            self.filenames_to_push.append(f'L{flush_level}.{n_runs}.filter')
-            if self.auto_push:
-                self.push_files()
+        self.rfds[flush_level].append((self.data_dir / f'L{flush_level}.{n_runs}.{self.global_version}.run').open('rb'))
 
         # reset WAL
         self.wal_file.close()
         self.wal_file = self.wal_path.open('wb')
 
         # trigger merge if exceeding the runs per level
-        # here I don't risk index out of bounds cause flush runs before, and is guaranteed to create at least the
-        # first level
-        if len(self.levels[0]) >= self.max_runs_per_level:
-            self.merge(0)
+        if len(self.levels[flush_level]) >= self.max_runs_per_level:
+            self.merge(flush_level)
 
     def snapshot(self):
         self.flush()
-        if not self.auto_push:
-            self.push_files()
+        if self.remote:
+            runs = discover_run_files(self.data_dir)
+            self.remote.push_deltas(runs, self.snapshot_version)
+            self.snapshot_version += 1
 
     def restore(self, version=None):
         # flush first to empty the memtable
         self.flush()
-        if self.replica:
-            self.replica.restore(max_per_level=self.max_runs_per_level, version=version)
+        if self.remote:
+            self.remote.restore(version=version)
             # close open file descriptors first
             for rfds in self.rfds:
                 for rfd in rfds:
