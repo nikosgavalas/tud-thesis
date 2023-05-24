@@ -36,13 +36,19 @@ class TestMemOnly(unittest.TestCase, FuzzyTester):
                         val_len_range=(0, 10), n_items=1_000, n_iter=10_000, seeds=[1], test_recovery=True,
                         test_remote=True)
 
+    def test_fuzzy_snapshot_continuous(self):
+        self.fuzzy_test_snapshot_continuous(MemOnly, args={'data_dir': self.dir.name, 'remote': self.remote},
+                                            key_len_range=(1, 10), val_len_range=(0, 13), n_items=10_000, n_iter=10_000,
+                                            seed=1)
+
     def test_versioning(self):
         db = MemOnly(self.dir, remote=self.remote)
 
         db.set(b'1', b'1')
         db.set(b'2', b'2')
-        db.snapshot()
+        db.snapshot(0)
         db.set(b'1', b'3')
+        db.snapshot(1)
         db.close()
 
         shutil.rmtree(self.dir)

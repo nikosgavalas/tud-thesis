@@ -113,7 +113,7 @@ class PathRemote(Remote):
         global_version = 0
         global_versions = [int(f.name.split('.')[2]) for f in self.remote_dir_path.glob('L*.run') if f.is_file()]
         if global_versions:
-            global_version = max(global_versions) + 2
+            global_version = max(global_versions) + 1
         return global_version
 
     def destroy(self):

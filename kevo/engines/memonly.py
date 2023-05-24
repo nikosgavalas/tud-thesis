@@ -19,7 +19,6 @@ class MemOnly(KVStore):
         self.hash_index: dict[bytes, bytes] = {}
 
         self.global_version = 0
-        self.snapshot_version = 0
 
         if self.remote:
             self.restore()
@@ -28,15 +27,20 @@ class MemOnly(KVStore):
 
     def rebuild_indices(self):
         self.hash_index.clear()
-        if (self.data_dir / f'L0.0.{self.global_version}.run').is_file():
-            with (self.data_dir / f'L0.0.{self.global_version}.run').open('rb') as log_file:
+
+        runs_discovered = self.discover_runs()
+        if not runs_discovered:
+            return
+
+        level_idx, run_idx, version = runs_discovered[0]
+        with (self.data_dir / f'L{level_idx}.{run_idx}.{version}.run').open('rb') as log_file:
+            key, value = self._read_kv_pair(log_file)
+            while key:
+                self.hash_index[key] = value
                 key, value = self._read_kv_pair(log_file)
-                while key:
-                    self.hash_index[key] = value
-                    key, value = self._read_kv_pair(log_file)
 
     def close(self):
-        self.snapshot()
+        pass
 
     def __getitem__(self, key):
         return self.get(key)
@@ -69,24 +73,22 @@ class MemOnly(KVStore):
             for key, value in self.hash_index.items():
                 self._write_kv_pair(log_file, key, value)
 
-        if (self.data_dir / f'L0.0.{self.global_version - 1}.run').is_file():
-            (self.data_dir / f'L0.0.{self.global_version - 1}.run').unlink()
+        for file in self.data_dir.glob(f'L0.0.*.run'):
+            if int(file.name.split('.')[2]) < self.global_version:
+                file.unlink()
 
         self.global_version += 1
 
-    def snapshot(self):
+    def snapshot(self, id: int):
         self.flush()
         if self.remote:
             runs = discover_run_files(self.data_dir)
-            self.remote.push_deltas(runs, self.snapshot_version)
-            self.snapshot_version += 1
+            self.remote.push_deltas(runs, id)
 
     def restore(self, version=None):
         self.flush()
         if self.remote:
             self.global_version = self.remote.restore(version=version)
-            if self.global_version is None:
-                self.global_version = 0
             self.rebuild_indices()
 
     def __sizeof__(self):

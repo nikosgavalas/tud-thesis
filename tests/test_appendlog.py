@@ -44,10 +44,10 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
         db = AppendLog(self.dir.name, remote=self.remote)
         db.set(b'a', b'1')
         db.set(b'b', b'2')
-        db.snapshot()
+        db.snapshot(0)
         db.set(b'a', b'3')
         db.set(b'b', b'4')
-        db.snapshot()
+        db.snapshot(1)
         db.close()
 
         shutil.rmtree(self.dir.name)
