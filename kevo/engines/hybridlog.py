@@ -18,7 +18,6 @@ class HybridLog(KVStore):
                  max_key_len=255,
                  max_value_len=255,
                  max_runs_per_level=3,
-                 mem_segment_len=2 ** 20,
                  ro_lag_interval=2 ** 10,
                  flush_interval=(4 * 2 ** 10),
                  hash_index='dict',
@@ -29,13 +28,15 @@ class HybridLog(KVStore):
 
         assert max_runs_per_level > 1
         assert flush_interval > 0
-        assert mem_segment_len >= ro_lag_interval + flush_interval
+        assert ro_lag_interval > 0
         assert hash_index in ['dict', 'native'], 'hash_index parameter must be either "dict" or "native"'
 
         self.max_runs_per_level = max_runs_per_level
         self.ro_lag_interval = ro_lag_interval
         self.flush_interval = flush_interval
-        self.mem_segment_len = mem_segment_len
+        # The mem segment length is not a parameter because there is no reason using more memory than the required
+        # amount, there is no trade-off. Therefore we keep it to the lowest possible value which is this sum.
+        self.mem_segment_len = flush_interval + ro_lag_interval + 1
         self.compaction_enabled = compaction_enabled
 
         if hash_index == 'native':

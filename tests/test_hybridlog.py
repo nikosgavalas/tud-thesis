@@ -19,7 +19,7 @@ class TestHybridLog(unittest.TestCase, FuzzyTester):
         self.remote.destroy()
 
     def test_basic(self):
-        l = HybridLog(self.dir.name, mem_segment_len=3, ro_lag_interval=1, flush_interval=1)
+        l = HybridLog(self.dir.name, ro_lag_interval=1, flush_interval=1)
 
         l.set(b'asdf', b'\x00\x01\x00\x00')
         l.set(b'b', b'\x00\x00\x02\x00')
@@ -59,42 +59,42 @@ class TestHybridLog(unittest.TestCase, FuzzyTester):
                         n_items=1000, n_iter=1_000_000, seeds=[1], test_recovery=False, test_remote=False)
 
     def test_fuzzy_merge(self):
-        self.fuzzy_test(HybridLog, args={'data_dir': self.dir.name, 'mem_segment_len': 30, 'ro_lag_interval': 10,
+        self.fuzzy_test(HybridLog, args={'data_dir': self.dir.name, 'ro_lag_interval': 10,
                                          'flush_interval': 10}, key_len_range=(1, 4), val_len_range=(0, 4),
                         n_items=1_000, n_iter=10_000, seeds=[1], test_recovery=False, test_remote=False)
 
     def test_fuzzy_index_rebuild(self):
-        self.fuzzy_test(HybridLog, args={'data_dir': self.dir.name, 'mem_segment_len': 30, 'ro_lag_interval': 10,
+        self.fuzzy_test(HybridLog, args={'data_dir': self.dir.name, 'ro_lag_interval': 10,
                                          'flush_interval': 10}, key_len_range=(1, 4), val_len_range=(0, 4),
                         n_items=1_000, n_iter=10_000, seeds=[1], test_recovery=True, test_remote=False)
 
     def test_fuzzy_remote(self):
-        self.fuzzy_test(HybridLog, args={'data_dir': self.dir.name, 'mem_segment_len': 30, 'ro_lag_interval': 10,
+        self.fuzzy_test(HybridLog, args={'data_dir': self.dir.name, 'ro_lag_interval': 10,
                                          'flush_interval': 10, 'remote': self.remote}, key_len_range=(1, 4),
                         val_len_range=(0, 4), n_items=1_000, n_iter=10_000, seeds=[1], test_recovery=True,
                         test_remote=True)
 
     def test_fuzzy_large_kvs(self):
         self.fuzzy_test(HybridLog, args={'data_dir': self.dir.name, 'max_key_len': 100_000, 'max_value_len': 100_000,
-                                         'mem_segment_len': 300, 'ro_lag_interval': 100, 'flush_interval': 100,
+                                         'ro_lag_interval': 100, 'flush_interval': 100,
                                          'remote': None}, key_len_range=(1, 100_000), val_len_range=(0, 100_000),
                         n_items=10, n_iter=100, seeds=[1], test_recovery=False, test_remote=False)
 
     def test_fuzzy_altogether(self):
         self.fuzzy_test(HybridLog,
-                        args={'data_dir': self.dir.name, 'mem_segment_len': 300_000, 'ro_lag_interval': 100_000,
-                              'flush_interval': 100_000, 'remote': self.remote},
+                        args={'data_dir': self.dir.name, 'ro_lag_interval': 150_000,
+                              'flush_interval': 150_000, 'remote': self.remote},
                         key_len_range=(1, 10), val_len_range=(0, 10), n_items=10_000, n_iter=1_000_000, seeds=[1],
                         test_recovery=True, test_remote=True)
 
     def test_fuzzy_snapshot(self):
         self.fuzzy_test_snapshot(HybridLog,
-                                 args={'data_dir': self.dir.name, 'mem_segment_len': 1000, 'ro_lag_interval': 400,
+                                 args={'data_dir': self.dir.name, 'ro_lag_interval': 400,
                                        'flush_interval': 400, 'remote': self.remote},
                                  key_len_range=(1, 10), val_len_range=(0, 13), n_items=10_000, n_iter=10_000, seed=1)
 
     def test_fuzzy_snapshot_continuous(self):
-        self.fuzzy_test_snapshot_continuous(HybridLog, args={'data_dir': self.dir.name, 'mem_segment_len': 1000,
+        self.fuzzy_test_snapshot_continuous(HybridLog, args={'data_dir': self.dir.name,
                                                              'ro_lag_interval': 400, 'flush_interval': 400,
                                                              'remote': self.remote}, key_len_range=(1, 10),
                                             val_len_range=(0, 13), n_items=10_000, n_iter=10_000, seed=1)
