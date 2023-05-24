@@ -170,6 +170,10 @@ class FuzzyTester:
                 engine.snapshot(v)
                 snapshot_dict(dict, tmpdir, v)
 
+            # simulate a shutdown in between
+            engine.close()
+            engine = engine_cls(**args)
+
             # load version 0
             engine.restore(0)
             dict = load_dict_snapshot(tmpdir, 0)

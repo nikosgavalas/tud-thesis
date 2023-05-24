@@ -2,8 +2,8 @@ import shutil
 import unittest
 from pathlib import Path
 
-from kevo import AppendLog, PathRemote, MinioRemote
 from fuzzytester import FuzzyTester
+from kevo import AppendLog, PathRemote, MinioRemote
 
 
 class TestAppendLog(unittest.TestCase, FuzzyTester):
@@ -11,7 +11,7 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
 
     def setUp(self):
         self.remote = PathRemote('/tmp/remote')
-        # self.remote = MinioReplica('testbucket')
+        # self.remote = MinioRemote('testbucket')
         self.dir.mkdir()
 
     def tearDown(self):

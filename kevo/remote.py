@@ -180,7 +180,7 @@ class MinioRemote(Remote):
             discovered_files = {obj.object_name for obj in self.client.list_objects(self.bucket) if
                                 obj.object_name.startswith('version') and obj.object_name.endswith('txt')}
             if not discovered_files:
-                return
+                return 0
             version = max(map(lambda p: int(p.split('.')[1]), discovered_files))
 
         # clean up the local tree first
@@ -196,7 +196,12 @@ class MinioRemote(Remote):
         for f in filenames:
             self.get(f)
 
-        return version
+        global_version = 0
+        global_versions = [int(obj.object_name.split('.')[2]) for obj in self.client.list_objects(self.bucket) if
+                                obj.object_name.startswith('L') and obj.object_name.endswith('run')]
+        if global_versions:
+            global_version = max(global_versions) + 1
+        return global_version
 
     def destroy(self):
         for o in self.client.list_objects(self.bucket):

@@ -2,8 +2,8 @@ import shutil
 import unittest
 from pathlib import Path
 
-from kevo import MemOnly, PathRemote
 from fuzzytester import FuzzyTester
+from kevo import MemOnly, PathRemote, MinioRemote
 
 
 class TestMemOnly(unittest.TestCase, FuzzyTester):
@@ -11,6 +11,7 @@ class TestMemOnly(unittest.TestCase, FuzzyTester):
 
     def setUp(self):
         self.remote = PathRemote('/tmp/remote')
+        # self.remote = MinioRemote('testbucket')
         self.dir.mkdir()
 
     def tearDown(self):
