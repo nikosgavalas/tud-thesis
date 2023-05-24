@@ -93,6 +93,7 @@ def main():
 
     appendlog_parser = subparsers.add_parser('appendlog')
     appendlog_parser.add_argument('--threshold', type=int, help='threshold that triggers merging, in bytes', default=(4 * 10**6))
+    appendlog_parser.add_argument('--compaction', type=bool, help='enable compaction', default=False)
 
     args = parser.parse_args()
     if not args.engine:

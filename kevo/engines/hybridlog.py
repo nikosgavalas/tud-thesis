@@ -21,7 +21,6 @@ class HybridLog(KVStore):
                  ro_lag_interval=2 ** 10,
                  flush_interval=(4 * 2 ** 10),
                  hash_index='dict',
-                 compaction_enabled=False,
                  remote: Optional[Remote] = None):
         self.type = 'hybridlog'
         super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, remote=remote)
@@ -37,7 +36,6 @@ class HybridLog(KVStore):
         # The mem segment length is not a parameter because there is no reason using more memory than the required
         # amount, there is no trade-off. Therefore we keep it to the lowest possible value which is this sum.
         self.mem_segment_len = flush_interval + ro_lag_interval + 1
-        self.compaction_enabled = compaction_enabled
 
         if hash_index == 'native':
             # TODO
@@ -194,11 +192,6 @@ class HybridLog(KVStore):
 
         self.wfd.close()
 
-        if self.compaction_enabled:
-            # TODO remove compaction entirely. It is done in-mem when flushing,
-            # there's no need for it at all.
-            self.compaction(self.levels[flush_level])
-
         self.levels[flush_level] += 1
         if self.levels[flush_level] >= self.max_runs_per_level:
             self.merge(flush_level)
@@ -257,34 +250,6 @@ class HybridLog(KVStore):
         self.wfd.close()
         self.wfd = (self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('ab')
         self.rfds[flush_level].append((self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('rb'))
-
-    def compaction(self, run):
-        # TODO move to appendlog where it's meaningful.
-        log_path = (self.data_dir / f'L0.{run}.run')
-        compacted_log_path = log_path.with_suffix('.tmp')
-        # NOTE i can copy the index here and keep the old one for as long as the compaction is running to enable reads
-        # concurrently
-
-        with compacted_log_path.open('ab') as compacted_log_file:
-            read_offset = 0
-            self.rfds[0][run].seek(read_offset)
-            k, v = self._read_kv_pair(self.rfds[0][run])
-            while k:
-                # not checking if k in index as it is for sure (i never remove keys from the index so far)
-                la = self.hash_index[k]
-                # if the record lies on disk and is the most recent one:
-                if la <= self.head_offset and self.la_to_file_offset[la] == Record(0, run, read_offset):
-                    write_offset = compacted_log_file.tell()
-                    self._write_kv_pair(compacted_log_file, k, v)
-                    self.la_to_file_offset[la] = Record(0, run, write_offset)
-                read_offset = self.rfds[0][run].tell()
-                k, v = self._read_kv_pair(self.rfds[0][run])
-
-        self.rfds[0][run].close()
-        # rename the file back
-        compacted_log_path.rename(compacted_log_path.with_suffix('.run'))
-        # get a new read fd
-        self.rfds[0][run] = log_path.open('rb')
 
     def snapshot(self, id: int):
         self.flush(self.tail_offset)

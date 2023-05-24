@@ -15,6 +15,7 @@ class AppendLog(KVStore):
                  max_value_len=255,
                  max_runs_per_level=3,
                  threshold=4_000_000,
+                 compaction=False,
                  remote: Optional[Remote] = None):
         self.type = 'appendlog'
         super().__init__(data_dir, max_key_len=max_key_len, max_value_len=max_value_len, remote=remote)
@@ -26,6 +27,8 @@ class AppendLog(KVStore):
         self.threshold = threshold
         self.counter = 0
 
+        self.compaction_enabled = compaction
+
         self.hash_index: dict[bytes, Record] = {}
         self.levels: list[int] = []
         # read file-descriptors
@@ -33,7 +36,6 @@ class AppendLog(KVStore):
         # write file-descriptor
         self.wfd: Optional[FileIO] = None
 
-        # TODO load last global version in recovery
         self.global_version = 0
 
         if self.remote:
@@ -75,7 +77,6 @@ class AppendLog(KVStore):
                 offset = log_file.tell()
                 k, _ = self._read_kv_pair(log_file)
 
-        # TODO set the global version to the max of the discovered ones
         self.wfd = (self.data_dir / f'L{0}.{self.levels[0]}.{self.global_version}.run').open('wb')
         self.rfds[0].append((self.data_dir / f'L{0}.{self.levels[0]}.{self.global_version}.run').open('rb'))
 
@@ -138,6 +139,9 @@ class AppendLog(KVStore):
         self.counter = 0
         self.wfd.close()
 
+        if self.compaction_enabled:
+            self.compaction(self.levels[flush_level])
+
         self.levels[flush_level] += 1
         if self.levels[flush_level] >= self.max_runs_per_level:
             self.merge(flush_level)
@@ -147,6 +151,30 @@ class AppendLog(KVStore):
         self.wfd.close()
         self.wfd = (self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('ab')
         self.rfds[flush_level].append((self.data_dir / f'L{flush_level}.{self.levels[flush_level]}.{self.global_version}.run').open('rb'))
+
+    def compaction(self, run):
+        log_path = (self.data_dir / f'L0.{run}.{self.global_version}.run')
+        compacted_log_path = log_path.with_suffix('.tmp')
+        # NOTE i can copy the index here and keep the old one for as long as the compaction is running to enable reads
+        # concurrently
+
+        with compacted_log_path.open('ab') as compacted_log_file:
+            read_offset = 0
+            self.rfds[0][run].seek(read_offset)
+            k, v = self._read_kv_pair(self.rfds[0][run])
+            while k:
+                if k in self.hash_index and self.hash_index[k] == Record(0, run, read_offset):
+                    write_offset = compacted_log_file.tell()
+                    self._write_kv_pair(compacted_log_file, k, v)
+                    self.hash_index[k] = Record(0, run, write_offset)
+                read_offset = self.rfds[0][run].tell()
+                k, v = self._read_kv_pair(self.rfds[0][run])
+
+        self.rfds[0][run].close()
+        # rename the file back
+        compacted_log_path.rename(compacted_log_path.with_suffix('.run'))
+        # get a new read fd
+        self.rfds[0][run] = log_path.open('rb')
 
     def merge(self, level: int):
         next_level = level + 1

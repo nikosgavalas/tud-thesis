@@ -61,12 +61,18 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
         db.close()
 
     def test_fuzzy_generic(self):
-        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'remote': None}, key_len_range=(1, 10),
-                        val_len_range=(0, 10), n_items=1000, n_iter=1_000_000, seeds=[1], test_recovery=False,
-                        test_remote=False)
+        self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'compaction': True, 'remote': None},
+                        key_len_range=(1, 10), val_len_range=(0, 10), n_items=1000, n_iter=1_000_000, seeds=[1],
+                        test_recovery=False, test_remote=False)
 
     def test_fuzzy_granular(self):
         self.fuzzy_test(AppendLog, args={'data_dir': self.dir.name, 'threshold': 100, 'remote': None},
+                        key_len_range=(1, 10), val_len_range=(0, 10), n_items=100, n_iter=10_000, seeds=[1],
+                        test_recovery=True, test_remote=False)
+
+    def test_fuzzy_compaction(self):
+        self.fuzzy_test(AppendLog,
+                        args={'data_dir': self.dir.name, 'threshold': 100, 'compaction': True, 'remote': None},
                         key_len_range=(1, 10), val_len_range=(0, 10), n_items=100, n_iter=10_000, seeds=[1],
                         test_recovery=True, test_remote=False)
 
