@@ -47,5 +47,9 @@ class RingBuffer:
         self.read_idx += 1
         return self.buffer[self.read_idx % self.capacity]
 
+    def set_tail_offset(self, offset: int):
+        self.write_idx = offset + 1
+        self.read_idx = offset
+
     def __sizeof__(self):
         return getsizeof(self.buffer)

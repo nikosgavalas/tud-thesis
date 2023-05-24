@@ -64,8 +64,6 @@ class LSMTree(KVStore):
         # this is used in snapshotting in the delta maps
         self.global_version = 0
 
-        self.snapshot_version = 0
-
         if self.remote:
             # restore calls rebuild_indices, so this way we avoid rebuilding twice
             self.restore()
@@ -173,6 +171,7 @@ class LSMTree(KVStore):
         fds, keys, values, is_empty, counters, nr_records_in_run = [], [], [], [], [], []
         for i, _ in enumerate(level):
             fd = self.rfds[level_idx][i]
+            fd.seek(0)
             fds.append(fd)
             k, v = self._read_kv_pair(fd)
             keys.append(k)
@@ -286,18 +285,17 @@ class LSMTree(KVStore):
         if len(self.levels[flush_level]) >= self.max_runs_per_level:
             self.merge(flush_level)
 
-    def snapshot(self):
+    def snapshot(self, id: int):
         self.flush()
         if self.remote:
             runs = discover_run_files(self.data_dir)
-            self.remote.push_deltas(runs, self.snapshot_version)
-            self.snapshot_version += 1
+            self.remote.push_deltas(runs, id)
 
     def restore(self, version=None):
         # flush first to empty the memtable
         self.flush()
         if self.remote:
-            self.remote.restore(version=version)
+            self.global_version = self.remote.restore(version=version)
             # close open file descriptors first
             for rfds in self.rfds:
                 for rfd in rfds:

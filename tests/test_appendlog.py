@@ -85,6 +85,11 @@ class TestAppendLog(unittest.TestCase, FuzzyTester):
         self.fuzzy_test_snapshot(AppendLog, args={'data_dir': self.dir.name, 'threshold': 100, 'remote': self.remote},
                                  key_len_range=(1, 10), val_len_range=(0, 13), n_items=10_000, n_iter=10_000, seed=1)
 
+    def test_fuzzy_snapshot_continuous(self):
+        self.fuzzy_test_snapshot_continuous(AppendLog, args={'data_dir': self.dir.name, 'threshold': 100,
+                                                             'remote': self.remote}, key_len_range=(1, 10),
+                                            val_len_range=(0, 13), n_items=10_000, n_iter=10_000, seed=1)
+
     def test_rebuild(self):
         l1 = AppendLog(self.dir.name, threshold=10)
 

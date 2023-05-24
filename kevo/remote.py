@@ -94,7 +94,7 @@ class PathRemote(Remote):
             # find the latest
             discovered_files = discover_version_files(self.remote_dir_path)
             if not discovered_files:
-                return
+                return 0
             version = max(map(lambda p: int(p.name.split('.')[1]), discovered_files))
 
         # clean up the local tree first
@@ -110,7 +110,11 @@ class PathRemote(Remote):
         for f in filenames:
             self.get(f)
 
-        return version
+        global_version = 0
+        global_versions = [int(f.name.split('.')[2]) for f in self.remote_dir_path.glob('L*.run') if f.is_file()]
+        if global_versions:
+            global_version = max(global_versions) + 2
+        return global_version
 
     def destroy(self):
         shutil.rmtree(self.remote_dir_path)

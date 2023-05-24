@@ -36,8 +36,6 @@ class AppendLog(KVStore):
         # TODO load last global version in recovery
         self.global_version = 0
 
-        self.snapshot_version = 0
-
         if self.remote:
             self.restore()
         else:
@@ -160,7 +158,8 @@ class AppendLog(KVStore):
         dst_file = (self.data_dir / f'L{next_level}.{next_run}.{self.global_version}.run').open('ab')
         for run_idx in range(self.levels[level]):
             src_file = self.rfds[level][run_idx]
-            src_offset = src_file.tell()
+            src_offset = 0
+            src_file.seek(src_offset)
             k, v = self._read_kv_pair(src_file)
             while k:
                 if k in self.hash_index and self.hash_index[k] == Record(level, run_idx, src_offset):
@@ -193,18 +192,17 @@ class AppendLog(KVStore):
         if self.levels[next_level] >= self.max_runs_per_level:
             self.merge(next_level)
 
-    def snapshot(self):
+    def snapshot(self, id: int):
         self.close_run()
         if self.remote:
             runs = discover_run_files(self.data_dir)
-            self.remote.push_deltas(runs, self.snapshot_version)
-            self.snapshot_version += 1
+            self.remote.push_deltas(runs, id)
         self.open_new_files()
 
     def restore(self, version=None):
         self.close_run()
         if self.remote:
-            self.remote.restore(version=version)
+            self.global_version = self.remote.restore(version=version)
             if self.wfd is not None:
                 self.wfd.close()
             for rfds in self.rfds:

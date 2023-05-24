@@ -71,7 +71,7 @@ class FuzzyTester:
 
             if test_recovery:
                 if test_remote:
-                    engine.snapshot()
+                    engine.snapshot(0)
                 engine.close()
                 if test_remote:
                     shutil.rmtree(engine.data_dir.name)
@@ -120,7 +120,7 @@ class FuzzyTester:
 
                     engine.set(rand_key, rand_value)
                 # snapshot the engine
-                engine.snapshot()
+                engine.snapshot(v)
                 # snapshot the dict
                 snapshot_dict(dict, tmpdir, v)
 
@@ -159,8 +159,7 @@ class FuzzyTester:
             # write and snapshot 3 times
             for v in range(3):
                 for _ in range(n_iter):
-                    rand_key = rng.choice(keys)
-                    rand_value = rng.choice(values)
+                    rand_key, rand_value = rng.choice(keys), rng.choice(values)
                     if not rand_value:
                         if rand_key in dict:
                             del dict[rand_key]
@@ -168,28 +167,27 @@ class FuzzyTester:
                         dict[rand_key] = rand_value
                     engine.set(rand_key, rand_value)
 
-                engine.snapshot()
+                engine.snapshot(v)
                 snapshot_dict(dict, tmpdir, v)
 
             # load version 0
             engine.restore(0)
             dict = load_dict_snapshot(tmpdir, 0)
-            # check that it is ok
             for k, v in dict.items():
                 self.assertEqual(v, engine.get(k))
 
             # write some more
             for _ in range(n_iter):
-                rand_key = rng.choice(keys)
-                rand_value = rng.choice(values)
+                rand_key, rand_value = rng.choice(keys), rng.choice(values)
                 if not rand_value:
                     if rand_key in dict:
                         del dict[rand_key]
                 else:
                     dict[rand_key] = rand_value
                 engine.set(rand_key, rand_value)
+
             # overwrite snapshot 1
-            engine.snapshot()
+            engine.snapshot(1)
             snapshot_dict(dict, tmpdir, 1)
 
             # now load all 3 and check that they are ok

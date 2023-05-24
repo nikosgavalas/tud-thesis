@@ -65,10 +65,10 @@ class TestLSMTree(unittest.TestCase, FuzzyTester):
                         args={'data_dir': self.dir.name, 'memtable_bytes_limit': 1000, 'remote': self.remote},
                         key_len_range=(1, 10), val_len_range=(0, 13), n_items=10_000, n_iter=10_000, seed=1)
 
-    # def test_fuzzy_snapshot_continuous(self):
-    #     self.fuzzy_test_snapshot_continuous(LSMTree,
-    #                              args={'data_dir': self.dir.name, 'memtable_bytes_limit': 1000, 'remote': self.remote},
-    #                              key_len_range=(1, 10), val_len_range=(0, 13), n_items=10_000, n_iter=10_000, seed=1)
+    def test_fuzzy_snapshot_continuous(self):
+        self.fuzzy_test_snapshot_continuous(LSMTree,
+                                 args={'data_dir': self.dir.name, 'memtable_bytes_limit': 1000, 'remote': self.remote},
+                                 key_len_range=(1, 10), val_len_range=(0, 13), n_items=10_000, n_iter=10_000, seed=1)
 
     def test_wal(self):
         l1 = LSMTree(self.dir.name)
@@ -91,10 +91,10 @@ class TestLSMTree(unittest.TestCase, FuzzyTester):
         db = LSMTree(self.dir.name, remote=self.remote)
         db.set(b'a', b'1')
         db.set(b'b', b'2')
-        db.snapshot()
+        db.snapshot(0)
         db.set(b'a', b'3')
         db.set(b'b', b'4')
-        db.snapshot()
+        db.snapshot(1)
         db.close()
 
         shutil.rmtree(self.dir.name)
