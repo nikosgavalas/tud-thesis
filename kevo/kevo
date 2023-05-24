@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys
 import csv
 import signal
@@ -18,12 +20,32 @@ def signal_handler(sig, frame):
 
 def parse(fd, args):
     if args.engine == 'lsmtree':
-        db = LSMTree(args.d, args.runs_per_level, args.density_factor, args.memory_limit)
+        db = LSMTree(
+            data_dir=args.d,
+            max_key_len=args.max_key_len,
+            max_value_len=args.max_value_len,
+            max_runs_per_level=args.max_runs_per_level,
+            density_factor=args.density_factor,
+            memtable_bytes_limit=args.memtable_bytes_limit
+        )
     elif args.engine == 'hybridlog':
-        db = HybridLog(args.d, args.max_key_len, args.max_val_len, args.memory, args.ro_lag, args.flush_interval)
+        db = HybridLog(
+            data_dir=args.d,
+            max_key_len=args.max_key_len,
+            max_value_len=args.max_value_len,
+            max_runs_per_level=args.max_runs_per_level,
+            ro_lag_interval=args.ro_lag_interval,
+            flush_interval=args.flush_interval
+        )
     elif args.engine == 'appendlog':
-        db = AppendLog(args.d, args.runs_per_level, args.threshold)
- 
+        db = AppendLog(
+            data_dir=args.d,
+            max_key_len=args.max_key_len,
+            max_value_len=args.max_value_len,
+            max_runs_per_level=args.max_runs_per_level,
+            threshold=args.threshold
+        )
+
     csv_reader = csv.reader(fd, delimiter=' ', quotechar='"')
     for row in csv_reader:
         if not row:
@@ -54,31 +76,22 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
 
     parser = ArgumentParser()
-    subparsers = parser.add_subparsers(title='engine', dest='engine', help='engine selection')
+    subparsers = parser.add_subparsers(title='engine', dest='engine', help='engine selection', )
     parser.add_argument('-f', type=str, help='path to input file')
     parser.add_argument('-d', type=str, help='path to data directory', default='./data')
+    parser.add_argument('--max-key-len', type=int, help='max key length', default=255)
+    parser.add_argument('--max-value-len', type=int, help='max value length', default=255)
+    parser.add_argument('--max-runs-per-level', type=int, help='max runs per level', default=3)
 
     lsm_parser = subparsers.add_parser('lsmtree')
-    lsm_parser.add_argument('--max-key-len', type=int, help='max key length', default=255)
-    lsm_parser.add_argument('--max-val-len', type=int, help='max value length', default=255)
-    lsm_parser.add_argument('--runs-per-level', type=int, help='max runs per level', default=3)
     lsm_parser.add_argument('--density-factor', type=int, help='density factor', default=20)
-    lsm_parser.add_argument('--memory-limit', type=int, help='memtable bytes limit', default=10**6)
+    lsm_parser.add_argument('--memtable-bytes-limit', type=int, help='memtable bytes limit', default=10**6)
 
     hybridlog_parser = subparsers.add_parser('hybridlog')
-    hybridlog_parser.add_argument('--max-key-len', type=int, help='max key length', default=255)
-    hybridlog_parser.add_argument('--max-val-len', type=int, help='max value length', default=255)
-    hybridlog_parser.add_argument('--runs-per-level', type=int, help='max runs per level', default=3)
-    hybridlog_parser.add_argument('--memory', type=int, help='memory segment length in bytes', default=2**20)
-    hybridlog_parser.add_argument('--ro-lag', type=int, help='read-only lag interval in num. of records', default=2**10)
+    hybridlog_parser.add_argument('--ro-lag-interval', type=int, help='read-only lag interval in num. of records', default=2**10)
     hybridlog_parser.add_argument('--flush-interval', type=int, help='flush interval in num. of records', default=(4 * 2**10))
-    hybridlog_parser.add_argument('--hash-index', type=str, help='type of the hash index, native or dict', default='dict')
-    hybridlog_parser.add_argument('--compaction-enabled', type=bool, help='compaction interval in num of flushes. If zero, compaction is disabled (default)', default=False)
 
     appendlog_parser = subparsers.add_parser('appendlog')
-    hybridlog_parser.add_argument('--max-key-len', type=int, help='max key length', default=255)
-    hybridlog_parser.add_argument('--max-val-len', type=int, help='max value length', default=255)
-    appendlog_parser.add_argument('--runs-per-level', type=int, help='max runs per level', default=3)
     appendlog_parser.add_argument('--threshold', type=int, help='threshold that triggers merging, in bytes', default=(4 * 10**6))
 
     args = parser.parse_args()
