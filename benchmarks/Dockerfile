@@ -1,4 +1,6 @@
-# python for the VM I am running the experiments.
+# python for the VM I was using for the experiments.
+# outdated now.
+
 # alias python='docker run -it -v $(pwd):/tmp python'
 
 FROM python:3.11
