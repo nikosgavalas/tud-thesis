@@ -1,0 +1,5 @@
+kevo==0.0.1
+jupyterlab==4.0.1
+pandas==2.0.2
+seaborn==0.12.2
+tqdm==4.65.0

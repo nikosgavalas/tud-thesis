@@ -174,6 +174,7 @@ def lineplot(data, x, y, filename,
 \end{{figure}}
 ''')
 
+
 def barplot(data, x, y, filename,
              hue=None,
              title=None, ylim=None,
