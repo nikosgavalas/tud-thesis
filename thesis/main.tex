@@ -214,7 +214,17 @@ headsepline, % Uncomment to get a line under the header
 
 \begin{abstract}
 \addchaptertocentry{\abstractname} % Add the abstract to the table of contents
-TODO
+The adoption of the serverless architecture and the Function-as-a-Service model has significantly increased in recent years, with more enterprises migrating their software and hardware to the cloud.
+However, most applications require state management, leading to the use of external databases.
+To alleviate the burden of state management, there are systems known as SFaaS (Stateful Function-as-a-Service) that provide stateful functions.
+Despite their benefits, SFaaS systems still face challenges such as the need for transactional logic. 
+Stateful streaming dataflow engines offer promising capabilities for implementing transactional SFaaS systems due to their exactly-once message delivery guarantees and global state management.
+Key-value stores serve as embedded databases in this architecture, making it crucial to carefully evaluate available options for suitable types of key-value stores.
+
+This work focuses on the implementation and evaluation of three distinct types of log-structured key-value stores within the context of serving as state-management backends for transactional dataflow systems.
+A key aspect of our implementations is the incorporation of efficient \textit{incremental snapshotting} functionality.
+We explore the performance and suitability of these key-value stores in managing state and supporting transactional operations in dataflow systems.
+
 \end{abstract}
 
 %----------------------------------------------------------------------------------------
@@ -223,7 +233,13 @@ TODO
 
 \begin{acknowledgements}
 \addchaptertocentry{\acknowledgementname} % Add the acknowledgements to the table of contents
-TODO
+I would like to express my gratitude to my supervisor, Asterios Katsifodimos, for providing me with the opportunity to demonstrate my abilities, trusting me, and offering invaluable feedback throughout the journey of my thesis. 
+
+Additionally, I extend my sincere appreciation and gratitude to my daily-supervisor, Kyriakos Psarakis, whose unwavering support, guidance and continuous feedback have been instrumental in making this work possible.
+I am also grateful to the members of the committee for generously dedicating their time to evaluate my work.
+
+Lastly, I would like to thank my family and friends for their support throughout this endeavor.
+
 \end{acknowledgements}
 
 %----------------------------------------------------------------------------------------
