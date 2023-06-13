@@ -73,7 +73,7 @@ In a (transactional) dataflow SFaaS system, the key-value stores need to have sp
 At this juncture we can outline the main research questions of this work. The first research question is:\\
 
 \begin{tcolorbox}
-    Which type or types of key-value stores are more fitting as embedded state stores in the worker processes of transactional dataflow SFaaS systems?
+    \textbf{RQ1}: Which type or types of key-value stores are more fitting as embedded state stores in the worker processes of transactional dataflow SFaaS systems?
 \end{tcolorbox}
 
 \vspace{8px}
@@ -83,26 +83,26 @@ Next, we will carefully narrow down our options and provide a compelling rationa
 Subsequently, we will proceed to implement the most promising candidates, and study them in depth, which leads us to the second and third research questions:\\
 
 \begin{tcolorbox}
-    How do changes in the parameters of each selected type of key-value store affect its performance?
+    \textbf{RQ2}: How do changes in the parameters of each selected type of key-value store affect its performance?
 \end{tcolorbox}
 \vspace{8px}
 
 \begin{tcolorbox}
-    In the selected types of key-value stores, which are the trade-offs that determine their operation? In which general use-cases does each of them perform better?
+    \textbf{RQ3}: In the selected types of key-value stores, which are the trade-offs that determine their operation? In which general use-cases does each of them perform better?
 \end{tcolorbox}
 \vspace{8px}
 
 Next, we will proceed with a thorough evaluation of the implemented key-value stores by integrating them into a transactional dataflow system. During this evaluation, we will specifically focus on assessing the efficiency of the incremental snapshotting functionality and its impact. Thus, our fourth research question is formulated as follows:\\
 
 \begin{tcolorbox}
-    How does the performance of a key-value store that incorporates incremental snapshotting functionality compare to that of a "naive" in-memory key-value store, which captures snapshots of its entire state at each step, in terms of snapshot creation time?
+    \textbf{RQ4}: How does the performance of a key-value store that incorporates incremental snapshotting functionality compare to that of a "naive" in-memory key-value store, which captures snapshots of its entire state at each step, in terms of snapshot creation time?
 \end{tcolorbox}
 \vspace{8px}
 
 Ultimately, we will be able to address the final research question:\\
 
 \begin{tcolorbox}
-    Is there a key-value store that clearly stands out as the superior choice for state management?
+    \textbf{RQ5}: Is there a key-value store that clearly stands out as the superior choice for state management?
     % TODO spoiler alert no, offer the programmer the ability to choose based on his app's reqs
 \end{tcolorbox}
 \vspace{8px}
