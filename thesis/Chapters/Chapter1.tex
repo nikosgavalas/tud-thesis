@@ -63,8 +63,6 @@ In a (transactional) dataflow SFaaS system, the key-value stores need to have sp
     \item \textit{Point operations}.
     A key-value store for our use-case should be optimal for point operations, i.e. operations associated with a single key, as opposed to range operations.
     Since state updates rarely operate on ranges of keys, we can leverage this knowledge to our advantage.
-
-    % TODO analytics readiness? - TODO sta future extensions: analytics readiness mporei na epiteuxthei an eixa tombstones giati tote tha mporousa na skanarw osa arxeia thelw xwris na xreiazetai index (=mnhmh). To tombstone tha mpaine se record metadata, sta opoia tha mporousa na valw kai kapoio checksum, kapoio crc gia na mai sigouros oti to record den einai corrupted.
 \end{enumerate}
 
 \section{Research Questions}

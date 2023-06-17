@@ -5,6 +5,9 @@
 \label{Chapter4-evaluation}
 
 % TODO write some intro here
+% TODO explain the experimental setup!!
+% TODO add HDD section.
+% TODO add Kyriakos' experiments.
 
 \section{Parameters}
 
@@ -361,3 +364,6 @@ We summarize our observations in table \ref{tab:props}.
 %lsm, append: they dont lose data
 %hybrid log: may lose data
 % **although these are not that crucial for our case since we are manually snapshotting**
+
+%hybrid log: if flushing immediately without readonly area, it degenerates into a buffered appendlog.
+% express concern about appendlog - flushing immediately for all the time may wear down an ssd pretty fast i guess.
