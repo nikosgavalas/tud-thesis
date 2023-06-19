@@ -215,7 +215,7 @@ Upon examining the latencies for the reads in figure \ref{fig:comparison-read-la
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.6\textwidth]{read-throughput.png}
+    \includegraphics[width=0.6\textwidth]{read-throughput.pdf}
     \caption{Read Latencies}
     \label{fig:comparison-read-latencies}
 \end{figure}
@@ -226,7 +226,7 @@ For this experiment, we perform a sequence of writes to each key-value store, an
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.6\textwidth]{recovery.png}
+    \includegraphics[width=0.6\textwidth]{recovery.pdf}
     \caption{Recovery Times}
     \label{fig:recovery}
 \end{figure}
@@ -239,7 +239,7 @@ HybridLog's superiority as the fastest key-value store comes at the cost of high
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.6\textwidth]{mem.png}
+    \includegraphics[width=0.6\textwidth]{mem.pdf}
     \caption{Memory Usage}
     \label{fig:comparison-memory}
 \end{figure}
@@ -259,12 +259,12 @@ For the second experiment, where only updates take place, the results can be see
 \begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
-        \includegraphics[width=1.1\linewidth]{snapshot.png}
+        \includegraphics[width=1\linewidth]{snapshot.pdf}
         \caption{Discrete}
     \end{subfigure}
     \begin{subfigure}{.5\textwidth}
         \centering
-        \includegraphics[width=1.1\linewidth]{snapshot-aggr.png}
+        \includegraphics[width=1\linewidth]{snapshot-aggr.pdf}
         \caption{Cumulative}
     \end{subfigure}
     \caption{Snapshotting Time vs Write Volume, when we increase the state by inserting new records.}
@@ -274,12 +274,12 @@ For the second experiment, where only updates take place, the results can be see
 \begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
         \centering
-        \includegraphics[width=1.1\linewidth]{snapshot-static-state.png}
+        \includegraphics[width=1\linewidth]{snapshot-static-state.pdf}
         \caption{Discrete}
     \end{subfigure}
     \begin{subfigure}{.5\textwidth}
         \centering
-        \includegraphics[width=1.1\linewidth]{snapshot-static-state-aggr.png}
+        \includegraphics[width=1\linewidth]{snapshot-static-state-aggr.pdf}
         \caption{Cumulative}
     \end{subfigure}
     \caption{Snapshotting Time vs Write Volume, when state stays the same and we only update it.}

@@ -2,8 +2,10 @@ FROM python:3.11
 
 WORKDIR /tmp
 
-COPY . .
+COPY requirements.txt .
+
+EXPOSE 8888
 
 RUN pip install -r requirements.txt
 
-ENTRYPOINT ["jupyter-lab"]
+CMD ["jupyter-lab", "--allow-root", "--ip=0.0.0.0", "--no-browser"]

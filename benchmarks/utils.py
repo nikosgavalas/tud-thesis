@@ -5,17 +5,15 @@ import os
 import shutil
 from random import Random
 from time import time, sleep
-import matplotlib.pyplot as plt
 
+import matplotlib.pyplot as plt
 import pandas as pd
 from numpy import percentile
 import seaborn as sns
 from tqdm import tqdm
 
-sys.path.append('.')  # make it runnable from the top level
-
-from benchmarks import Timer, Uniform, Zipfian, HotSet
-from kevo import PathReplica
+from kevo import PathRemote
+from pygav.utils import Timer
 
 
 figures_dir = '../thesis/Figures'
@@ -60,7 +58,7 @@ def measure_disk_local(db, distro, keys_set, vals_set, n_ops, engine, eng_comb, 
 
 
 def measure_disk_remote(db, distro, keys_set, vals_set, n_ops, engine, eng_comb, **args):
-    return [{'metric': 'disk_remote', 'value': get_dir_size_bytes(db.replica.remote_dir_path)}]
+    return [{'metric': 'disk_remote', 'value': get_dir_size_bytes(db.remote.remote_dir_path)}]
 
 
 def measure_recovery(db, distro, keys_set, vals_set, n_ops, engine, eng_comb, **args):
@@ -122,11 +120,11 @@ def run(klens, vlens, n_items_list, n_ops_list,
                         db.close()
                         del db
                         shutil.rmtree(data_dir)
-                        if type(eng_comb['replica']) is PathReplica:
-                            eng_comb['replica'].destroy()
+                        if type(eng_comb['remote']) is PathRemote:
+                            eng_comb['remote'].destroy()
 
     df = pd.DataFrame.from_dict(data)
-    df['replica'] = df['replica'].apply(lambda x: x is not None)
+    df['remote'] = df['remote'].apply(lambda x: x is not None)
     df['value'] = df['value'].astype(float)
     df['distro'] = df['distro'].astype(str)
     df['engine'] = df['engine'].astype(str)
