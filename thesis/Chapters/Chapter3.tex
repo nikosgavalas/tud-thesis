@@ -37,12 +37,14 @@ Also, all keys and values are in the form of raw bytes. This the design decision
 
 Regarding the encoding of the key-value pairs on disk, we encode each key-value pair as shown in figure \ref{fig:encoding}: we first encode the length of the key in bytes, then we write the key itself, and then we repeat the same for the value. This enables us to avoid any kind of character-escaping mechanisms, special characters, or padding, which would all add complexity, restrictions, and would waste disk space.
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.9\textwidth]{encoding.pdf}
     \caption{Encoding \& Example. Keys and values are prepended by their respective length values.}
     \label{fig:encoding}
 \end{figure}
+\vspace{20px}
 
 An important benefit from using such encoding is that it allows us to encode keys and values of arbitrary size without limit. The trade-off is that we use slightly extra disk space for the encoding bytes if the keys and/or values are large. With encoding bytes of length one we can have keys/values up to $2^{1*8}-1=255$ bytes long, with length two we can have up to $2^{2*8}-1=65535$ et cetera. Each key-value store accepts as argument in the constructor the maximum key length and the maximum value length, which we use to determine the amount of bytes we will use for the encoding.
 
@@ -86,31 +88,37 @@ Sorting is essential for indexing, as it enables us to lookup keys in logarithmi
 
 Initially, as we are writing data, we keep them in our buffer, and when this buffer is full, we flush it into a run-file. This can be seen in figure \ref{fig:lsm-flush}, where the file \verb"L0.0.run" is created, corresponding to the first file of the first run (everything is zero-indexed).
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{lsm-flush.pdf}
     \caption{Example of LSM-Tree flushing.}
     \label{fig:lsm-flush}
 \end{figure}
+\vspace{20px}
 
 As we continue writing key-value pairs, we create new runs in the same level by flushing our memtable (figure \ref{fig:lsm-flush2}), until their number reaches the maximum allowed runs per level, which is defined by the parameter \verb"max_runs_per_level" when instantiating the LSM-Tree. When that happens, a merge is triggered; the merge will merge these files into one file in the next level, and will check if the number of runs in that level is equal to the maximum runs per level. If it is, it will cascade the merging recursively to the next level, and this process will keep happening until no merges need to be done.
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{lsm-flush2.pdf}
     \caption{Example of LSM-Tree flushing (cont.).}
     \label{fig:lsm-flush2}
 \end{figure}
+\vspace{20px}
 
 The merging process is shown in figure \ref{fig:lsm-merge}, where the runs in the first level are merged into \verb"L1.0.run". After being merged, the files in the first level are deleted.
 The merging process resembles the greedy merging step in the mergesort algorithm, because every run is sorted. We keep a number of file descriptors equal to the number of runs we are merging, and go through all of them at the same time. We take care to write the smallest key first, to make sure that the resulting merged file is also sorted. In case of two or more conflicting keys during the process, we write the latest one (the one with the largest run index) and skip the rest, as those have been overwritten by a more recent write and are not valid anymore. This is also how the LSM-Tree performs garbage-collection - during the merging process, invalid values are dropped.
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{lsm-merge.pdf}
     \caption{Example of LSM-Tree merging.}
     \label{fig:lsm-merge}
 \end{figure}
+\vspace{20px}
 
 \subsubsection{Reading data}
 
@@ -119,23 +127,27 @@ This involves performing a binary search on each file, starting from the first l
 
 This search can be time-consuming if done on the files themselves, because it would involve a large number of I/O operations, so we use a data structure called \textit{fence pointers} [\cite{fence-pointers}] to speed up the process. The fence pointers are essentially sparse in-memory indices implemented with arrays that allow us to do binary-search in memory, and they associate a key with its offset in the runfile. Of course, they don't store all the keys, as that would be like keeping all the keys in memory and thus we would miss one of the main points of using an LSM-Tree. Instead, we use a subset of them, and since the runfile is itself sorted, if the key we are looking for does not have a fence pointer itself, we still know the offsets among which it should be (hence the name ``fence pointers'') and we can go ahead and search for it linearly on the file. The gap in numbers of key-value pairs between the offsets of the pointers is controlled via a parameter called \verb"density_factor" - the higher its value, the greater the gaps and the more key-value pairs we have to search sequentially on disk. An example illustrating how fence pointers function can be found in figure \ref{fig:fence-pointers}.
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{fencepointers.pdf}
     \caption{Fence pointers example with density factor equal to 3, i.e. a pointer that maps a key to a file offset is created for every 3 entries of the SST.}
     \label{fig:fence-pointers}
 \end{figure}
+\vspace{20px}
 
 The fence pointers offer a significant speedup, but we can skip entire runfiles if we know for sure that they don't contain the key we are looking for by using Bloom filters [\cite{bloom-filters}]. The Bloom filter is a probabilistic data structure that when queried if a key exists in a set (a runfile in our case) it will answer negatively with 100\% certainty if it does not. The positive answer is not always accurate, but having a few false positives is no problem for files that we were going to search anyway if we didn't have the Bloom filter.
 
 The Bloom filter achieves this probabilistic lookup by employing a bitarray of $m$ bits and $k$ hash functions. To illustrate how it works, let us consider the example in figure \ref{fig:bloom-filter} with a bitarray of $m=20$ bits and $k=3$ hash functions.
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{bloomfilter.pdf}
     \caption{Bloom filter example with bitarray of 20 bits and 3 hash functions.}
     \label{fig:bloom-filter}
 \end{figure}
+\vspace{20px}
 
 To insert value $x$, we hash it using all three hash functions obtaining the values $h_i(x), i=\{1,2,3\}$, then we calculate the values $p_i = h_i(x)\mod{m}$, and set the bits of the bitarray with positions equal to $p_i$ to $1$. When we want to query the Bloom filter, to check whether the value $x$ exists, we use the hash functions and modulo operation again the same way and check whether the bits at positions $p_i$ are set to 1. If there is at least one bit that is set to zero then $x$ definitely does not belong in the set of values inserted in the Bloom filter and if all values are set to one, then $x$ \textit{probably} belongs in the set. The positive answer is probabilistic simply because the same bits may have been set to 1 from insertions of values other than $x$.
 
@@ -150,12 +162,14 @@ To embed the fence pointers and the Bloom filter into a runfile, we append each 
 
 After these additions, value retrieval looks as follows (see figure \ref{fig:lsm}): starting from the first level and from the rightmost latest run, we query the Bloom filters for the key we are looking for. When a Bloom filter answers positively, we query the fence pointers, and get an offset. We look up at most $d$ key-values in that file following this offset, where $d$ equals the density factor. If the key is not found, we repeat this process with the next runfile. If we exhaust the lookups and haven't found the key, we return the empty value (0 bytes).
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{lsm.pdf}
     \caption{Example of value retrieval in an LSM-Tree. The numbers in the arrows signify the search order.}
     \label{fig:lsm}
 \end{figure}
+\vspace{20px}
 
 \subsubsection{Fault-tolerance}
 
@@ -167,12 +181,14 @@ More specifically, when we write a value to the store, we also write it to an ap
 LSM-Trees come in two flavors, depending on the merging strategy: there are the LSM-Trees that use \textit{tiering} and those that use \textit{leveling} [\cite{compactionary}]. In tiering, we use up to $R$ runs per level, while in leveling we only use one.
 As we increase $R$, the first level essentially transforms into an append-only log, which has the highest write speed. However, the reads become slower, as the LSM-Tree has to search a higher number of files to retrieve a value. On the other hand, in leveling when $R=1$, the LSM-Tree merges each file directly to the runfile of the next level, using the file sizes as thresholds that trigger merges. This optimizes the read performance but impedes the writes due to frequent merges [\cite{lsm-design-space}]. Figure \ref{fig:tiering-leveling} illustrates the difference between the tiering and leveling.
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{tieringleveling.pdf}
     \caption{Tiering vs Leveling in LSM-Trees. Tiering sort-merges $R$ runs per level ($R=3$ in this example) into a run in the next level, while in leveling each run is greedily sort-merged with the run from the next level.}
     \label{fig:tiering-leveling}
 \end{figure}
+\vspace{20px}
 
 Our implementation uses tiering because we are optimizing for writes. Nonetheless, the $R$ value described above is still configurable, and we will analyze the performance of the LSM-Tree for various values of it in Chapter \ref{Chapter4-evaluation}.
 
@@ -236,12 +252,14 @@ The advantages however come at the following costs:
 
 To recover from a failure, the AppendLog needs to rebuild its main index. To do this, it has to scan all the files in reverse order (i.e. reverse to the order they are written) and for each key-value pair it needs to update the index. After this procedure, the index will point to the latest records.
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=1\textwidth]{appendlog.pdf}
     \caption{Example of operation of the AppendLog. $K_i$:$V_j$ are key-value pairs.}
     \label{fig:appendlog}
 \end{figure}
+\vspace{20px}
 
 \subsection{Implementation}
 \label{appendlog-implementation}
@@ -279,14 +297,12 @@ These records can either be allocated in memory (using some memory allocator lik
 The logical segments themselves are implemented as follows: the area residing on disk is an abstraction of log-structured files, and the area residing in memory is a ring buffer.
 
 \vspace{20px}
-
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.9\textwidth]{logical-address-space.pdf}
     \caption{Logical Address Space used in HybridLog.}
     \label{fig:logical-address-space}
 \end{figure}
-
 \vspace{20px}
 
 As records are written to the HybridLog, we first insert them to the tail of the ring buffer, we update the hash-index, and we move the tail offset further.
@@ -324,12 +340,14 @@ The index consists of a Python list that holds ``buckets''.
 Each bucket is itself a list of length 8. The first 7 entries are integers, of which the upper bits hold the keys and the lower bits the values (which will be used to hold the logical addresses). The last entry holds the index of the next bucket, in case of overflow.
 New buckets are allocated at the end of the list holding the buckets.
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.9\textwidth]{hash-index.pdf}
     \caption{Hash-index of HybridLog.}
     \label{fig:hash-index}
 \end{figure}
+\vspace{20px}
 
 To lookup a key in this hash-index, we hash it first using the MurmurHash3 hash function which is suitable for hash-based lookups, we calculate the modulo of the hash with the initial number of buckets, and then we follow the buckets, scanning the entries for the key, until we exhaust the buckets.
 
@@ -409,12 +427,14 @@ When the store requests to perform a rollback to a specific version, it will rea
 
 Incremental snapshotting is visualized in figure \ref{fig:incremental-snapshots}. In this example, the remote has saved a version comprised of the file \verb|L1.0.0.run|, which contains the merged changes from files \verb|L0.0.0.run|, \verb|L0.1.0.run| and \verb|L0.2.0.run|. When the store writes two new files, \verb|L0.0.1.run| and \verb|L0.1.1.run| and takes a snapshot at this point, it will only push these two to the remote, since the remote already has the file \verb|L1.0.0.run|.
 
+\vspace{20px}
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.9\textwidth]{incremental-snapshots.pdf}
     \caption{Incremental snapshotting example.}
     \label{fig:incremental-snapshots}
 \end{figure}
+\vspace{20px}
 
 The global version addition we implemented also has a very convenient side effect: it allows us to execute merges in the background. Since this feature has not yet been implemented, we discuss it in the following section, \ref{section-extensions}.
 
