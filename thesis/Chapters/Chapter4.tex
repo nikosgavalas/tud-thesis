@@ -14,7 +14,7 @@ In this section, the experiments performed aim to highlight qualitatively the ef
 
 For the following demonstrations, we use by default - unless explicitly stated otherwise - the following settings: The randomly generated keys and values have lengths of 4 bytes, the sets of available keys and values have cardinality $10^3$ each, the distribution of picking keys and values from the sets is uniform, the input write and read throughput are $10^3$ writes and $10^3$ reads per second respectively, and for latency measurements that are sampled (to calculate the 50th and the 95th percentile), the number of samples is 10. Also, for the LSM-Tree we use \verb"max_runs_per_level="3, \verb"memtable_bytes_limit="$10^3$, \verb"density_factor="10, for the parameters of HybridLog we use \verb"ro_lag_interval="$10^3$, \verb"flush_interval="$10^3$, and for the AppendLog we use \verb|threshold=|$10^3$ and \verb"compaction=False".
 
-All the tests in this section are performed in a machine with 4 Intel Xeon CPU cores, 8 GB of RAM and an NVMe SSD drive, the write bandwidth of which has been benchmarked (with the \verb|fio| tool) at 16.6 MB/s.
+All the tests in this section are performed in a machine with 4 Intel Xeon CPU cores, 8 GB of RAM and an NVMe SSD drive, the write bandwidth of which has been benchmarked (with the \verb|fio| tool) at 16.6 MB/s for both random and sequential writes.
 
 \subsection{LSM-Tree}
 
@@ -106,7 +106,7 @@ In figure \ref{fig:memtable-bytes-limit-write-read} we notice that as the size o
 
 The mutable segment size of the HybridLog memory segment is controlled by the value of the RO (read-only) Lag Interval - \verb"ro_lag_interval". This parameter influences directly the probability of an in-memory hit of a key lookup, and thus the cache-like behavior of the whole memory segment.
 
-If this value is large, we expect many in-memory hits and therefore better performance for both writes and reads. This is exactly what we observe in figure \ref{fig:ro_lag_interval}. However, we obviously cannot increase this segment indefinitely because 
+If this value is large, we expect many in-memory hits and therefore better performance for both writes and reads. This is exactly what we observe in figure \ref{fig:ro_lag_interval}. However, we obviously cannot increase this segment indefinitely because we have finite memory.
 
 \begin{figure}[h]
     \begin{subfigure}{.5\textwidth}
@@ -182,6 +182,8 @@ Compaction is an experimental optional feature that we will evaluate empirically
 
 From the experiment results in figures \ref{fig:compaction-write} and \ref{fig:compaction_read} it seems that this is exactly the case. Compaction offers no advantage for reads (which was expected, since file access is still the same), but also no advantage for writes, which are in fact impaired, as compaction introduces a significant overhead. Therefore, compaction should be avoided in our use-case.
 
+At this point, the question of whether we would get the same negative answer in a rotational HDD drive arises. We execute the same test in a machine with an HDD drive and the results are still not influenced. These results can be found in Appendix \ref{Appendix-B}.
+
 \section{Comparison}
 
 In this section we proceed to compare the engines on their performances when executing the same task with similar parameters. For the following experiments, we use the following parameters: Key and value lengths of 5 bytes each (so 10-byte key-value pairs), $10^5$ unique keys and values, and 10 samples per average latency measurement for the percentiles. Also, for all engines we use \verb"max_runs_per_level="10, for the LSM-Tree \verb"density_factor="10 and \verb"memtable_bytes_limit="100K, for the HybridLog \verb"ro_lag_interval="10K and \verb"flush_interval="10K, and for the AppendLog \verb"threshold="100K and \verb|compaction=False|.
@@ -194,6 +196,7 @@ In figure \ref{fig:comparison-write} we observe the write latencies of each engi
 
 When we choose keys using a Zipfian distribution instead, some keys are accessed compared to the Uniform distribution, the LSM-Tree and the HybridLog become faster than earlier, because the Zipfian distribution allows them to better leverage their in-memory buffering structures before flushing, thus reducing I/O operations, and the AppendLog becomes slower, because it lacks any similar buffering method to take advantage of the Zipfian distribution. Among them, the HybridLog is clearly the fastest, precisely because its memory segment with its fast in-place updates of recently written records exploits the Zipfian distribution best.
 
+To cross out the possibility of results being dependent on the type of disk, we execute the same experiment in a rotational HDD drive and notice that the results are indeed not depended on the disk type. These results can be found in Appendix \ref{Appendix-B} for both writes and reads.
 
 \begin{figure}[h]
     \centering
@@ -248,7 +251,9 @@ HybridLog's superiority as the fastest key-value store comes at the cost of high
 
 This section focuses on evaluating the incremental snapshotting capabilities of the three log-structured engines. Towards this goal, to demonstrate the advantage of having incremental snapshots, we compare the LSM-Tree, HybridLog and AppendLog to ``MemOnly'', which is a naive implementation of a key-value store based on an entirely in-memory hosted HashMap that dumps its whole state to disk every time we want to take a snapshot of it.
 
-We do two experiments. In the first, we iterate and write new key-value pairs, taking also a snapshot at the end of each iteration. In the second experiment, we first perform a large write-volume of 1GB, and then we write data in small increments on 1KB, taking a snapshot after each increment.
+\subsection{Benchmark}
+
+We perform two experiments. In the first, we iterate and write new key-value pairs, taking also a snapshot at the end of each iteration. In the second experiment, we first perform a large write-volume of 1GB, and then we write data in small increments on 1KB, taking a snapshot after each increment.
 
 For both experiments, we use keys and values of 2 and 8 bytes respectively so that the available keys are no more than $2^{16}$ and therefore we will not need too much memory for the indices of HybridLog, AppendLog and MemOnly. Also, to simulate a snapshot over the network, we add an overhead of 1$\mu$s per byte (as if we had a network channel of 1MB/s). The settings for all engines are similar so that the comparison is as fair as possible.
 
@@ -288,11 +293,88 @@ For the second experiment, where only updates take place, the results can be see
 
 The important takeaway from these two experiments is that while the cumulative time of the naive snapshotting method increases quadratically at the worst case, the log-structured incremental methods increase linearly. This distinction can have significant ramifications in the performance of systems that keep large states.
 
+\subsection{Real-world evaluation}
+\label{section-real-world-evaluation}
+
+To evaluate the incremental snapshotting functionality in a more realistic setting, we integrated each key-value store in a transactional dataflow SFaaS system. More specifically, we embedded each key-value store as state-store in each \textit{worker} of the dataflow system.
+
+We used a system comprising of 4 workers to conduct the subsequent measurements. These workers processed transactions at a rate of 1000 transactions per second (1KTPS) over a duration of 60 seconds. Throughout this time:
+
+\begin{itemize}
+    \item We captured periodic snapshots and measured their respective durations.
+    \item We intentionally induced a worker failure to initiate a recovery process and measured its duration.
+    \item We also measured the transaction latency, i.e. the time for a single transaction to complete.
+\end{itemize}
+
+\subsubsection{Snapshots}
+
+For a state size consisting of 100K discrete keys, the results we obtain are shown in figure \ref{fig:snapshot-dataflow-100k}. We observe that in general, the stores that take their snapshots incrementally are indeed capable of snapshotting much faster than the non-incremental method (``MemOnly''). There are a few exceptions in this, caused by transfer of  larger files sometimes, but in the general case, the incremental functionality yields faster snapshots.
+
+These results are even more pronounced when we increase the state size from 100K discrete keys to 1 million, as can be seen in figure \ref{fig:snapshot-dataflow-1m}. In this figure, the workload consists of mostly insertions at the beginning, so the state grows until the snapshot with sequential ID 5. After this point, updates take over and and the state size remains the same. In both parts, the incremental snapshots significantly outperform the naive ones, especially in the update-heavy part, making incremental snapshotting ideal for transactional systems.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1\textwidth]{snapshot-duration-100k.pdf}
+    \caption{Snapshot duration in a dataflow system, for a workload consisting of 100K unique keys.}
+    \label{fig:snapshot-dataflow-100k}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1\textwidth]{snapshot_duration_1m.pdf}
+    \caption{Snapshot duration in a dataflow system, for a workload consisting of 1M unique keys.}
+    \label{fig:snapshot-dataflow-1m}
+\end{figure}
+
+\subsubsection{Recovery}
+
+The average time taken for a worker to recover the state after a failure is shown in table \ref{tab:recoveries}. The findings for the log-structure state-stores are consistent with our earlier findings, with the LSMTree being the fastest and the HybridLog and AppendLog taking the most time to recover a snapshot due to their need to scan all the files to rebuild their indices, contrary to the LSMTree which only has to load and deserialize the Bloom filters and the fence pointers.
+
+Also, we notice that the MemOnly implementation takes significantly less time on average, because it only needs to deserialize and load the snapshot, which itself is as small as possible. The log-structured engines inevitably load some redundant data on top of the useful state so they naturally take longer to recover a snapshot. This is a trade-off that comes with incremental snapshots, but it's definitely worth paying, unless the system crashes all the time. For a system that crashes constantly though, there are bigger concerns than having efficient snapshotting capabilities.
+
+% Please add the following required packages to your document preamble:
+% \usepackage{booktabs}
+\begin{table}[]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Engine} & \textbf{Duration @100K keys} & \textbf{Duration @1M keys} \\ \midrule
+LSMTree & 139 & 297 \\
+HybridLog & 284 & 1488 \\
+AppendLog & 281 & 1500 \\
+MemOnly & 26 & 100 \\ \bottomrule
+\end{tabular}
+\caption{Average time to recover the state in the dataflow system in ms, per key-value store type, for state sizes of 100K and 1M keys.}
+\label{tab:recoveries}
+\end{table}
+
+\subsubsection{Latencies}
+
+The measurements for the transaction latencies for the run with 1M unique keys are shown in table \ref{tab:latencies}. Compared to the in-memory store, the log-structured stores perform at the 50th percentile (the median). However, at the 99th percentile we notice a large difference in favor of the in-memory store. This is attributed to the fact that our current implementations don't perform the merges in the background which causes the processes to block. This degrades performance, especially during merging large files, but as we saw in Chapter \ref{Chapter3-implementation}, merging in the background can be implemented trivially after the versioning system we introduced for the incremental snapshotting.
+
+% Please add the following required packages to your document preamble:
+% \usepackage{booktabs}
+\begin{table}[]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Engine} & \textbf{Latency, 50p} & \textbf{Latency, 99p} \\ \midrule
+LSMTree & 5 & 2255 \\
+HybridLog & 5 & 2121 \\
+AppendLog & 5 & 1883 \\
+MemOnly & 7 & 57 \\ \bottomrule
+\end{tabular}
+\caption{Transaction latency in the dataflow system in ms, for a state consisting of 1M keys.}
+\label{tab:latencies}
+\end{table}
+
 \section{Discussion}
 
-We summarize our observations in table \ref{tab:props}.
+We summarize our observations and comparisons in table \ref{tab:props}. The naive in-memory store is the more performant (although this is not always true as can be seen in the experiment in the dataflow system in the previous section, \ref{section-real-world-evaluation}) but does not support neither spill-to-disk for larger-than-memory states nor incremental snapshots.
 
-% TODO comment on the table
+From the stores that do have spill-to-disk and incremental snapshots, the HybridLog seems to be the fastest, especially for Zipfian-distributed data. However, the keys of the state must all fit in memory. The AppendLog also has the same restriction because it uses the same indexing method, but because it flushes every write immediately it offers the fastest snapshotting.
+
+The LSM-Tree is the most balanced, being slightly less performant but at the same time avoiding the limitations of the other stores in terms of state size in relation to the memory usage. It is the most memory-efficient store and also offers the fastest recovery, because of its indexing scheme and the fact that it doesn't need to scan all the files upon recovery as the two log-structured stores need to.
 
 % Please add the following required packages to your document preamble:
 % \usepackage{booktabs}
@@ -314,22 +396,13 @@ We summarize our observations in table \ref{tab:props}.
   \begin{tabular}[c]{@{}l@{}}Keys must\\ fit in mem.\end{tabular} &
   \begin{tabular}[c]{@{}l@{}}Keys must\\ fit in mem.\end{tabular} \\
 \textbf{Data Loss (w/o snapshot)} & Will lose all records & None              & \begin{tabular}[c]{@{}l@{}}Will lose\\ unflushed records\end{tabular} & None               \\
-\textbf{Incremental Snapshots}    & No                    & Yes               & Yes                                                                   & Yes               
+\textbf{Incremental Snapshots}    & No                    & Yes               & Yes                                                                   & Yes               \\ \bottomrule
 \end{tabular}%
 }
 \caption{Summary of the properties of the key-value stores.}
 \label{tab:props}
 \end{table}
 
-% TODO comment on the table.
+Also, the LSM-Tree (with write-ahead-logging) and the AppendLog will never lose data, contrary to HybridLog which will lose unflushed records and MemOnly which will lose all data. However, in our use-case this characteristic is not very important since in a distributed system we entirely rely on snapshots to save the state anyway.
 
-%lsm, append: they dont lose data
-%hybrid log: may lose data
-% **although these are not that crucial for our case since we are manually snapshotting**
-
-%hybrid log: if flushing immediately without readonly area, it degenerates into a buffered appendlog.
-% express concern about appendlog - flushing immediately for all the time may wear down an ssd pretty fast i guess.
-
-
-% TODO add HDD section.
-% TODO add Kyriakos' experiments.
+One important concern about the AppendLog is that, precisely because it flushes all writes instantly and does not use any buffering, it can contribute to wearing down an SSD disk faster comparing to the LSM-Tree and HybridLog that utilize buffering for their write operations. This happens because SSD drives have a limited number of program-erase (P/E) cycles and each write operation consumes a certain amount of P/E cycles.
