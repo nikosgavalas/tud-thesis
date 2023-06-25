@@ -10,7 +10,7 @@ Transactional dataflow systems are a class of distributed systems designed to ha
 They provide a programming model that allows developers to write declarative, data-driven computations that automatically handle fault tolerance, scalability, and consistency.
 
 Transactional dataflow SFaaS (Stateful Function-as-a-Service) systems are cloud-based systems that provide a serverless platform for processing large-scale data with transactional guarantees.
-These systems allow users to write and deploy stateful individual functions or small pieces of code that are triggered in response to events, such as incoming data or scheduled tasks. They are build on top of dataflow systems because they provide fault tolerance, scalability and consistency out-of-the-box.
+These systems allow users to write and deploy stateful individual functions or small pieces of code that are triggered in response to events, such as incoming data or scheduled tasks. They are built on top of dataflow systems because they provide fault tolerance, scalability, and consistency out-of-the-box.
 
 One of the most prominent transactional dataflow SFaaS system is Apache Flink's [\cite{apache-flink}] StateFun, the architecture of which is shown in figure \ref{fig:statefun-arch} (credited to \cite{transactions-serverless-functions-leveraging-stateful-dataflows}).
 
@@ -23,7 +23,7 @@ One of the most prominent transactional dataflow SFaaS system is Apache Flink's 
 
 Remote functions are executed in the nodes of the StateFun cluster, and each node saves its state into an embedded key-value store, as the state can be modelled effectively by a collection of key-value pairs.
 
-In relation to the current work, this is the model architecture for which we will optimize our key-value stores. More concretely, we assume that the key-value stores are to be used as embedded key-value stores in a similar cluster, and that there exists some reliable remote storage in the cloud to store our snapshots.
+Relatively to the current work, this is the model architecture for which we will optimize our key-value stores. More concretely, we assume that the key-value stores are to be used as embedded key-value stores in a similar cluster and that there exists some reliable remote storage in the cloud to store our snapshots.
 
 \section{Key-value stores}
 
@@ -53,7 +53,7 @@ B-trees are commonly used in database systems (especially relational database sy
 
 \subsubsection{Log-Structured Merge-Trees}
 
-The Log-structured Merge-Tree [\cite{lsmtree}] (or LSM-Tree for short) is another popular data-structure used in modern database systems.
+The Log-structured Merge-Tree [\cite{lsmtree}] (or LSM-Tree for short) is another popular data structure used in modern database systems.
 
 At its core, the LSM-tree consists of two main components: a memory component, often called the memtable, that serves as an in-memory buffer and a series of on-disk components, typically referred to as levels. The levels themselves are comprised of immutable SSTables, short for sorted-string tables, or just ``runs''. The writes to the LSM-Tree are flushed directly to disk, and the runs are then merged periodically to garbage-collect overwritten records. The LSM-Trees' internals are analyzed in detail in Chapter \ref{Chapter3-implementation}.
 
@@ -62,11 +62,11 @@ In comparison to the B-Trees, LSM-Trees have several advantages (or trade-offs t
 \begin{itemize}
     \item The LSM-trees excel in workloads with heavy write operations (inserts-updates-deletes). Since writes are initially buffered in the memtable and flushed to disk periodically, LSM-trees minimize disk I/O operations, resulting in significantly faster write performance compared to B-trees. B-trees, on the other hand, require immediate disk writes for every update, which can be a performance bottleneck in write-intensive workloads. However, B-Trees typically are more suitable for read-intensive workloads.
 
-    \item LSM-Trees are usually more space-efficient, leading to less disk space usage. B-Trees often suffer from fragmentation, where deleted or updated entries leave behind empty or partially-filled nodes. LSM-trees consolidate data during the compaction process, eliminating duplicates and reclaiming space, leading to improved space utilization. In addition, data is LSM-Trees can be relatively easily compressed, leading to even more efficient space utilization.
+    \item LSM-Trees are usually more space-efficient, leading to less disk space usage. B-Trees often suffer from fragmentation, where deleted or updated entries leave behind empty or partially-filled nodes. LSM-trees consolidate data during the compaction process, eliminating duplicates and reclaiming space, leading to improved space utilization. In addition, data in LSM-Trees can be relatively easily compressed, leading to even more efficient space utilization.
 
-    \item In storage systems, a phenomenon known as \textit{write amplification} [\cite{write-amplification,space-amplification}] occurs, which can have a detrimental effect on disk durability and performance, especially in SSD drives. Write amplification refers to the situation where a single database write operation triggers multiple physical writes to the disk. This phenomenon is more pronounced in B-trees in comparison to the LSM-trees, because multiple random page writes are needed to update a single value and the index. LSM-Trees are less susceptible to this phenomenon because they write data sequentially, leading to less susceptibility to write amplification. Sequential writes also lead to a performance boost, especially in rotational HDD disks.
+    \item In storage systems, a phenomenon known as \textit{write amplification} [\cite{write-amplification,space-amplification}] occurs, which can have a detrimental effect on disk durability and performance, especially in SSD drives. Write amplification refers to the situation where a single write operation in the database triggers multiple physical writes to the disk. This phenomenon is more pronounced in B-trees in comparison to the LSM-trees, because multiple random page writes are needed to update a single value and the index. LSM-Trees are less susceptible to this phenomenon because they write data sequentially, leading to less susceptibility to write amplification. Sequential writes also lead to a performance boost, especially in rotational HDD disks.
 
-    \item Due to the way LSM-Trees organize their data immutably into levels, they allow for fast recovery, and most importantly for efficient incremental snapshots. \textit{All the recent writes are located in higher levels of the LSM-Tree and therefore when taking a snapshot we can exclude the lower levels if they have been included in a previous snapshot}. With a B-Tree, incremental snapshots would be challenging to achieve because of their in-place updates. We would need to maintain additional data-structures to keep track of what exactly was changed, and make these data-structures persistent as well.
+    \item Due to the way LSM-Trees organize their data immutably into levels, they allow for fast recovery, and most importantly for efficient incremental snapshots. \textit{All the recent writes are located in higher levels of the LSM-Tree and therefore when taking a snapshot we can exclude the lower levels if they have been included in a previous snapshot}. With a B-Tree, incremental snapshots would be challenging to achieve because of their in-place updates. We would need to maintain additional data structures to keep track of what exactly was changed, and make these data structures persistent as well.
 \end{itemize}
 
 While log-structured storage offers numerous benefits, it does have a drawback related to the compaction process, which can occasionally impact the performance of concurrent read and write operations. As disks have limited bandwidth, allocating a significant portion of it to merging operations can adversely affect data writes. This can result in a slight reduction in throughput and average response time. The impact is typically minimal but in certain cases, particularly at higher percentiles, queries to log-structured storage engines may experience relatively high response times. In such scenarios, B-trees tend to offer more predictable and consistent performance.
@@ -75,7 +75,7 @@ Additionally, in B-trees each key exists in precisely one location within the in
 
 \subsubsection{Fractal Trees}
 
-Fractal Trees are a type of indexing data structure that are designed to provide high performance and scalability in multi-core environments. They are primarily based on B-Trees.
+Fractal Trees are a type of indexing data structure that is designed to provide high performance and scalability in multi-core environments. They are primarily based on B-Trees.
 
 The key idea behind Fractal Trees is to split the index into a set of smaller indexes, each of which is optimized for a specific data access pattern. This allows the system to scale horizontally across multiple cores and nodes, while also providing high performance for a wide range of workloads.
 
@@ -87,7 +87,7 @@ On-disk hash-tables, also known as persistent hash-tables, are data structures t
 
 \subsubsection{In-memory key-value stores}
 
-In-memory key-value stores, as the name implies, store and retrieve data entirely in main memory, providing fast and efficient access to key-value pairs. Unlike disk-based storage systems, which store data on hard drives, in-memory key-value stores keep the entire dataset in RAM, eliminating the latency associated with disk I/O operations, allowing for extremely low access times, making them ideal for applications that require high-performance data retrieval, such as caching, real-time analytics, and session management. However, the limited capacity of RAM restricts the size of the dataset that can be stored in-memory, making these stores more suitable for smaller to moderate-sized datasets that can fit within the available memory. A well-known commercial in-memory key-value store is \cite{redis}.
+In-memory key-value stores, as the name implies, store and retrieve data entirely in main memory, providing fast and efficient access to key-value pairs. Unlike disk-based storage systems, which store data on hard drives, in-memory key-value stores keep the entire dataset in RAM, eliminating the latency associated with disk I/O operations, allowing for extremely low access times, making them ideal for applications that require high-performance data retrieval, such as caching, real-time analytics, and session management. However, the limited capacity of RAM restricts the size of the dataset that can be stored in memory, making these stores more suitable for smaller to moderate-sized datasets that can fit within the available memory. A well-known commercial in-memory key-value store is \cite{redis}.
 
 \subsubsection{Hybrids}
 
@@ -109,7 +109,7 @@ The problem of incremental snapshots can be seen as an extension of the broader 
 
 Apache Flink [\cite{apache-flink}] leverages the properties of the log-structured storage and the concept of \textit{delta maps} (see section \ref{data-structs-sync}) [\cite{state-management-apache-flink}] for incremental snapshots, although as for the time this related work was published, it hasn't been implemented. This approach is the one we generally follow in implementing the incremental snapshotting functionality in the key-value stores in Chapter \ref{Chapter3-implementation}.
 
-In the work of \cite{fraser-diff-sync}, the author introduces the concept of \textit{Differential Synchronization} for synchronizing changes to a single document edited by multiple users in parallel. The approach is interesting but too high-level for our use-case.
+In the work of \cite{fraser-diff-sync}, the author introduces the concept of \textit{Differential Synchronization} for synchronizing changes to a single document edited by multiple users in parallel. The approach is interesting but too high-level for our use case.
 
 \subsection{Data structures for efficient state synchronization}
 \label{data-structs-sync}
@@ -124,7 +124,7 @@ Delta maps are usually implemented with version vectors or logs, depending on th
 
 \subsubsection{Merkle trees}
 
-Merkle trees [\cite{merkle-trees}] are a cryptographic data structure that facilitate efficient and secure verification of data integrity. They operate by organizing data into a tree-like structure, where each leaf node represents a small portion of data and the intermediate nodes store the hash values of their child nodes. The process of constructing a Merkle tree involves recursively hashing pairs of nodes until a single root hash, called the Merkle root. This root hash serves as a compact representation of the entire data set, allowing for efficient lookup of changes. An example of a Merkle-Tree is shown in figure \ref{fig:merkle-tree} \footnote{Credits to Wikipedia}.
+Merkle trees [\cite{merkle-trees}] are a cryptographic data structure that facilitates efficient and secure verification of data integrity. They operate by organizing data into a tree-like structure, where each leaf node represents a small portion of data and the intermediate nodes store the hash values of their child nodes. The process of constructing a Merkle tree involves recursively hashing pairs of nodes until a single root hash called the Merkle root. This root hash serves as a compact representation of the entire data set, allowing for efficient lookup of changes. An example of a Merkle-Tree is shown in figure \ref{fig:merkle-tree} \footnote{Credits to Wikipedia}.
 
 \begin{figure}[h]
     \centering
@@ -133,7 +133,7 @@ Merkle trees [\cite{merkle-trees}] are a cryptographic data structure that facil
     \label{fig:merkle-tree}
 \end{figure}
 
-In the context of synchronizing distributed systems, Merkle trees play a crucial role. They enable multiple parties to compare and synchronize their datasets by efficiently identifying differences in data without transferring the complete dataset. By comparing the Merkle root hashes, participants can determine if their datasets are identical or if specific portions of the data have diverged. This approach minimizes the amount of data that need to be exchanged and reconciled, reducing bandwidth requirements and synchronization time.
+In the context of synchronizing distributed systems, Merkle trees play a crucial role. They enable multiple parties to compare and synchronize their datasets by efficiently identifying differences in data without transferring the complete dataset. By comparing the Merkle root hashes, participants can determine if their datasets are identical or if specific portions of the data have diverged. This approach minimizes the amount of data that needs to be exchanged and reconciled, reducing bandwidth requirements and synchronization time.
 
 \subsubsection{Conflict-Free Replicated Data Types (CRDTs)}
 
@@ -143,4 +143,4 @@ CRDTs are a class of data structures designed for distributed systems that aim t
 
 The key idea behind CRDTs is that they ensure convergence by allowing updates to be commutative and/or associative, meaning that the order of concurrent operations does not affect the final state of the data.
 
-CRDTs have been implemented for a variety of lower-level data structures like counters, sets, maps, registers, even JSONs [\cite{json-crdt}].
+CRDTs have been implemented for a variety of lower-level data structures like counters, sets, maps, registers, and even JSONs [\cite{json-crdt}].

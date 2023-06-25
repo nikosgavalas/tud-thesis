@@ -15,10 +15,10 @@ While FaaS offerings prioritize scalability by being stateless, most application
 Several recent works have aimed to alleviate the burden of state management from application developers [\cite{orleans,durable-functions,beldi}] by enabling the transparent management of application state through external databases, thereby providing \textit{stateful functions}, or \textit{SFaaS}.
 
 SFaaS systems ease the development of stateful applications, but they are not a panacea per se.
-Any programmer that develops distributed applications will eventually have to deal with fundamental potential issues such as network partitioning, system failures and the Byzantine generals messaging problem [\cite{byzantine}].
+Any programmer that develops distributed applications will eventually have to deal with fundamental potential issues such as network partitioning, system failures, and the Byzantine generals messaging problem [\cite{byzantine}].
 These problems become especially hard to deal with when the application level requires implementing \textit{transactional} logic, as transactions require extra guarantees. Transactions are sets of operations that must adhere to the ACID principles - Atomicity, Consistency, Isolation, and Durability [\cite{transaction-definition}]. 
 
-Consequently, developers often find themselves intermixing business logic with consistency checks, rollbacks, snapshots, and timeouts, resulting in systems that are highly intricate to maintain and prone to failures. This highlights the need for an intermediary layer that abstracts the distributed fault-tolerance logic and provides application developers with specific guarantees, both at the state-management level and the transactional level, if feasible.
+Consequently, developers often find themselves intermixing business logic with consistency checks, rollbacks, snapshots, and timeouts, resulting in systems that are highly intricate to maintain and prone to failures. This highlights the need for an intermediary layer that abstracts the distributed fault tolerance logic and provides application developers with specific guarantees, both at the state-management level and the transactional level, if feasible.
 
 SFaaS systems built on top of \textit{stateful streaming dataflow engines} such as Apache Flink StateFun [\cite{apache-flink}] make excellent candidates for implementing \textit{transactional SFaaS} systems, primarily for two reasons [\cite{transactions-serverless-functions-leveraging-stateful-dataflows}]:
 
@@ -39,9 +39,9 @@ In a (transactional) dataflow SFaaS system, the key-value stores need to have sp
 
 \begin{enumerate}
     \item \textit{Incremental snapshots} [\cite{state-management-apache-flink}].
-    When the dataflow engine requests a worker to create a snapshot of its state, the state backend (the key-value store) will dump the state and save it. As this process happens many times during the execution of a workflow, to ensure fault-tolerance and fast state recovery, it is imperative that it is done efficiently, building on previous snapshots.
+    When the dataflow engine requests a worker to create a snapshot of its state, the state backend (the key-value store) will dump the state and save it. As this process happens many times during the execution of a workflow, to ensure fault tolerance and fast state recovery, it is imperative that it is done efficiently, building on previous snapshots.
     
-    The naive solution is to save the whole state every time, but if there is a way to only save the updates on the state at each step, incrementally, it would definitely be more efficient. However, saving only the updates on each step, would make recovery very slow, as the state would need to be rebuilt from the very beginning in case of a system failure.
+    The naive solution is to save the whole state every time, but if there is a way to only save the updates on the state at each step, incrementally, it would definitely be more efficient. However, saving only the updates on each step would make recovery very slow, as the state would need to be rebuilt from the very beginning in case of a system failure.
     In this work, we propose a solution that combines \textit{fast incremental snapshots with low recovery times}.
 
     \item \textit{State recovery to a previous version from previous snapshots (rollback)} [\cite{snapshots-rollbacks,state-management-apache-flink}]. Upon execution, the dataflow coordinator process may request the workers to restore some previous version of their state, so that the system can go back to some consistent global state and ``replay'' events to recover from some failure.
@@ -50,7 +50,7 @@ In a (transactional) dataflow SFaaS system, the key-value stores need to have sp
     When dealing with large volumes of data, it is expected that during execution the state will exceed in size the amount that can be stored in memory.
     Hence, it is essential that the key-value store employs persistent storage when necessary to handle states larger than the available memory.
 
-    \item \textit{Update-intensity}.
+    \item \textit{Update intensity}.
     In dataflow systems, changes to the state are typically characterized by the volume of updates rather than inserts or deletes.
     This is particularly evident in workflows that involve data aggregations or analytics, and it holds even more significance in systems that support transactions.
     Transactional systems often involve frequent operations like value increments. As a result, the state backend needs to be well-suited for update-heavy workloads.
@@ -61,7 +61,7 @@ In a (transactional) dataflow SFaaS system, the key-value stores need to have sp
     The hot set may drift as time passes but the strong temporal locality property is maintained.
 
     \item \textit{Point operations}.
-    A key-value store for our use-case should be optimal for point operations, i.e. operations associated with a single key, as opposed to range operations.
+    A key-value store for our use case should be optimal for point operations, i.e. operations associated with a single key, as opposed to range operations.
     Since state updates rarely operate on ranges of keys, we can leverage this knowledge to our advantage.
 \end{enumerate}
 
@@ -86,7 +86,7 @@ Subsequently, we will proceed to implement the most promising candidates, and st
 \vspace{8px}
 
 \begin{tcolorbox}
-    \textbf{RQ3}: In the selected types of key-value stores, which are the trade-offs that determine their operation? In which general use-cases does each of them perform better?
+    \textbf{RQ3}: In the selected types of key-value stores, which are the trade-offs that determine their operation? In which general use cases does each of them perform better?
 \end{tcolorbox}
 \vspace{8px}
 
@@ -121,9 +121,9 @@ We summarize this work's contributions in the following points:
 
 The rest of the thesis is structured as follows:
 
-Chapter \ref{Chapter2-related-work} provides a review of the existing literature and related work in the field. It explores previous research, methodologies, and advancements in key-value stores and state management within transactional dataflow systems. This chapter establishes a solid foundation for our own study.
+Chapter \ref{Chapter2-related-work} provides a review of the existing literature and related work in the field. It explores previous research, methodologies, and advancements in key-value stores and state management within transactional dataflow systems. This chapter establishes a solid foundation for our study.
 
-In chapter \ref{Chapter3-implementation}: we delve into comprehensive descriptions of the internal workings of each type of key-value store. We provide in-depth insights into their underlying mechanisms, data structures, and algorithms. Furthermore, we discuss the specific implementation details and design decisions that pertain to each key-value store type. By thoroughly understanding the intricacies of each implementation, we lay the groundwork for subsequent evaluations and comparisons.
+In Chapter \ref{Chapter3-implementation} we delve into comprehensive descriptions of the internal workings of each type of key-value store. We provide in-depth insights into their underlying mechanisms, data structures, and algorithms. Furthermore, we discuss the specific implementation details and design decisions that pertain to each key-value store type. By thoroughly understanding the intricacies of each implementation, we lay the groundwork for subsequent evaluations and comparisons.
 
 Chapter \ref{Chapter4-evaluation} is dedicated to the evaluation of our implemented key-value stores. We conduct a series of benchmarks and comparisons to assess their performance and capabilities. This includes integrating the key-value stores into a transactional dataflow system to simulate real-world usage scenarios. By rigorously evaluating their performance, scalability, and efficiency, we gain valuable insights into the strengths and limitations of each implementation. We discuss the obtained results and analyze the implications they have on state management in transactional dataflow systems.
 
