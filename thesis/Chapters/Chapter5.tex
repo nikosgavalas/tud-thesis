@@ -6,16 +6,67 @@
 
 \section{Summary}
 
-In this work, we have implemented three different key-value stores, as state backends that support incremental snapshotting in transactional dataflow SFaaS systems.
+In this work, we have implemented three different key-value stores that support incremental snapshotting. The guiding principle throughout the design process was them serving as state backends in transactional dataflow SFaaS systems.
+
 We analyzed their behavior and the trade-offs governing their operation under different settings of their parameters, gaining insight on how they should be tweaked to deliver the best performance according to the use case.
 Then, we performed fair comparisons between them, indicating the strengths and weaknesses of each and the domains on which each of them excels.
-Finally, we implemented logic to support incremental snapshotting capabilities and rollback to previous versions, and evaluated this as well.
+Finally, we implemented logic to support incremental snapshotting capabilities and rollback to previous versions, and evaluated these functionalities as well.
 
-% TODO answer research questions
+To address our research questions, starting with the first one:
+
+\begin{tcolorbox}
+    \textbf{RQ1}: Which type or types of key-value stores are more fitting as embedded state stores in the worker processes of transactional dataflow SFaaS systems?
+\end{tcolorbox}
+
+As we argued in \ref{Chapter2-related-work}, the key-value stores that are more fitting for transactional dataflow systems are the LSM-Tree-based ones, or more generally those that employ log-structuring.
+The workloads of transactional dataflow systems are write-heavy (and more specifically update-heavy) with many point-updates and with high temporal locality, and also because dataflow systems take periodical snapshots of their state there is a strong need for this snapshotting to be as efficient as possible.
+Log-structured stores work great with these types of workloads contrary to other data structures like B-Trees, Fractal Trees or on-disk hash-tables, and they also ``group'' the updates conveniently in levels, making incremental snapshotting relatively trivial implementation-wise.
+
+After implementing the LSM-Tree, the HybridLog and the AppendLog, we were in a position to answer the following two research questions:
+
+\begin{tcolorbox}
+    \textbf{RQ2}: How do changes in the parameters of each selected type of key-value store affect its performance?
+\end{tcolorbox}
+
+In the LSM-Tree, when the parameter controlling the sparsity of the indexes is set too low (low-sparsity), the reads are fast but the memory and disk-usage increase. When set too high, the store is more memory and space-efficient but the reads become slow.
+Regarding the size of the memtable, the larger it is, the more performant is the store in both writes and reads. In the HybridLog, similarly, the larger the mutable in-memory segment the more performant the store. The read-only segment size should be configured to a small value but not too small, otherwise writes become slow due to frequent merges.
+In the AppendLog, similarly to the HybridLog's parameter controlling the read-only segment size, the threshold should be set to a small value but if this value is too small the writes are impeded. Pre-merge per-file compaction does not improve performance.
+
+\begin{tcolorbox}
+    \textbf{RQ3}: In the selected types of key-value stores, which are the trade-offs that determine their operation? In which general use-cases does each of them perform better?
+\end{tcolorbox}
+
+The HybridLog is the fastest of the log-structured key-value stores, but risks losing recently written records, plus its keys must fit in memory. The AppendLog offers the fastest snapshot and does not lose records, but its keys must also fit in memory, and is also slightly slower. The LSM-Tree has the lowest recovery times, its keys do not need to fit in memory, it uses the less memory and does not lose any records, but it is slower than the other two.
+
+In Chapter \ref{Chapter4-evaluation}, we also gained insights to answer the last two research questions:
+
+\begin{tcolorbox}
+    \textbf{RQ4}: How does the performance of a key-value store that incorporates incremental snapshotting functionality compare to that of a "naive" in-memory key-value store, which captures snapshots of its entire state at each step, in terms of snapshot creation time?
+\end{tcolorbox}
+
+Incremental snapshotting, turned out to offer dramatic speedups in snapshotting speed over the naive snapshotting strategy, both in benchmarking setups and in the real-world setups.
+More specifically, in the worst case it accelerates snapshots up to a relatively large constant factor, and in the best case it reduces the snapshotting complexity from quadratic to linear.
+Also, in update-heavy workloads with large states (which is the typical case in transactional dataflow systems) it drops snapshotting time down by orders of magnitude, as we demonstrated in the real-world experiments.
+
+\begin{tcolorbox}
+    \textbf{RQ5}: Is there a key-value store that clearly stands out as the superior choice for state management?
+\end{tcolorbox}
+
+The HybridLog stands out in comparison to the other two log-structured stores, with its highly performant point-updates via cache-like buffering and efficient exploitation of temporal locality while at the same time maintaining the incremental snapshotting capabilities. It does have the drawback of having the risk of losing records precisely because of its buffering, but as we argued earlier, this is not a problem in distributed systems that checkpoint their state using periodic snapshots.
+
+However, log-structuring, along with incremental snapshots and spill-to-disk may not always be the best choice for all workloads. For small states that can entirely fit to memory, perhaps an in-memory store is the best choice, because it avoids all the serialization and deserialization overheads that the disk introduces and the benefits of incremental snapshotting are not greatly pronounced.
+
+Hence we cannot say that HybridLog is absolutely superior for all state management purposes, because we underlined, the other log-structured stores have strong points as well which may be favorable for some state-management use-case, and also for workloads with small states, it may be more simple and beneficial to just use in-memory stores.
+
+Therefore, the choice entirely depends on the workload and the use-case and should be up to the programmer to decide which type of key-value store to choose to maximize efficiency. This is also the argument presented in the work of \cite{workload-aware-streaming-state-management}.
 
 \section{Future Work}
 
-TODO
-% let the programmer choose, check to paper "in support of workload-aware..."
+In section \ref{section-extensions} we presented some potential extensions and optimizations that can be added to our implementations.  In addition to these, in this final section we propose some other interesting points that can serve as basis for future work.
 
-% all works tweak log-structuring for either reads or writes. proposal: optimize for snapshot and state recovery
+Firstly, all the stores we explored leveraged characteristics and parameters of log-structuring to optimize for either reads or writes. It would be interesting to explore whether log-structuring can be tweaked specifically in favor of snapshotting efficiency and/or rollbacks, by adjusting for example the numbers of runs per level.
+
+Another focus point would be to investigate whether compaction (in the way it was implemented in AppendLog) can actually make a difference in terms of performance, when both compaction and merging are done in the background by some thread other than the main writing thread. Intuitively, it should make a difference by making more efficient use of the disk's bandwidth.
+
+Lastly, the key-value stores could be unified into one, of which the actual backend engine can be chosen by the application programmer that implements functions to be executed by the SFaaS service, and is a choice between the LSM-Tree, HybridLog, AppendLog and MemOnly. Correct choice of the backend engine can have dramatic performance improvements [\cite{workload-aware-streaming-state-management}]. This is also what \cite{riak} does in it's product.
+% let the programmer choose, check to paper "in support of workload-aware..."

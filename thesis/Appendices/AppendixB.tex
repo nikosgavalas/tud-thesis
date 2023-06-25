@@ -11,7 +11,7 @@ The intention behind conducting this experiment was to evaluate whether slower r
 
 It seems that these characteristics do not have an impact on the outcome. The diagrams are visually similar (because the random seeds are the same), they are just ``shifted slightly upwards'' because the drive is slower.
 
-The absence of any significant difference in the results can be justified by the fact that all stores write data sequentially, not randomly, and sequential writes are similar to both types of drives in the sense that they are both fast. It's random writes that degrade the performance of rotational HDDs because the disk head must move and wait for the disk to rotate, and this type of writes are not used in our use-case.
+The absence of any significant difference in the results can be justified by the fact that all stores write data sequentially, not randomly, and sequential writes are similar to both types of drives in the sense that they are both fast. It's random writes that degrade the performance of rotational HDDs because the disk head must move and wait for the disk to rotate, and this type of writes is not common in our implementations.
 
 \section{Compaction in AppendLog}
 
