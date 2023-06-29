@@ -56,7 +56,7 @@ The HybridLog stands out in comparison to the other two log-structured stores, w
 
 However, log-structuring, along with incremental snapshots and spill-to-disk may not always be the best choice for all workloads. For small states that can entirely fit to memory, perhaps an in-memory store is the best choice because it avoids all the serialization and deserialization overheads that the disk introduces and the benefits of incremental snapshotting are not greatly pronounced.
 
-Hence we cannot say that HybridLog is absolutely superior for all state management purposes, because we underlined, the other log-structured stores have strong points as well which may be favorable for some state-management use-case, and also for workloads with small states, it may be more simple and beneficial to just use in-memory stores.
+Hence we cannot say that HybridLog is absolutely superior for all state management purposes, because as we underlined, the other log-structured stores have strong points as well which may be favorable for some state-management use-case, and also for workloads with small states, it may be more simple and beneficial to just use in-memory stores.
 
 Therefore, the choice entirely depends on the workload and the use-case and should be up to the programmer to decide which type of key-value store to choose to maximize efficiency. This is also the argument presented in the work of \cite{workload-aware-streaming-state-management}.
 
